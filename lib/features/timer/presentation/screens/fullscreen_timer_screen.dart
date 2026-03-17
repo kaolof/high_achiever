@@ -1,31 +1,166 @@
+import 'dart:async';
+import 'dart:math';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
+import 'package:sensors_plus/sensors_plus.dart';
+
 import '../../../../core/constants/app_colors.dart';
 import '../../domain/timer_notifier.dart';
 
-class FullscreenTimerScreen extends StatelessWidget {
+class FullscreenTimerScreen extends StatefulWidget {
   const FullscreenTimerScreen({super.key});
 
+  static const _bgColor = Color(0xFF1A1F1C);
+
   static Future<void> show(BuildContext context) async {
+    // Cover the screen immediately so the rotation is hidden behind a solid color.
+    final overlayState = Overlay.of(context);
+    final entry = OverlayEntry(
+      builder: (_) => const ColoredBox(
+        color: _bgColor,
+        child: SizedBox.expand(),
+      ),
+    );
+    overlayState.insert(entry);
+
     await SystemChrome.setPreferredOrientations([
       DeviceOrientation.landscapeLeft,
       DeviceOrientation.landscapeRight,
     ]);
-    if (!context.mounted) return;
+    // Wait for the physical rotation to settle.
+    await Future.delayed(const Duration(milliseconds: 380));
+
+    if (!context.mounted) {
+      entry.remove();
+      return;
+    }
+
+    final navigator = Navigator.of(context);
+
+    // Remove overlay after the route has had two frames to paint itself.
+    bool entryRemoved = false;
+    void removeEntry() {
+      if (!entryRemoved) {
+        entryRemoved = true;
+        entry.remove();
+      }
+    }
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => removeEntry());
+    });
+
     try {
-      await Navigator.of(context).push(
+      await navigator.push(
         PageRouteBuilder(
           opaque: true,
-          transitionDuration: const Duration(milliseconds: 300),
+          transitionDuration: Duration.zero,
           pageBuilder: (_, __, ___) => const FullscreenTimerScreen(),
-          transitionsBuilder: (_, animation, __, child) =>
-              FadeTransition(opacity: animation, child: child),
+          transitionsBuilder: (_, __, ___, child) => child,
         ),
       );
     } finally {
-      await SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
+      removeEntry(); // safety – remove if still present after pop
+
+      // Cover again while rotating back to portrait.
+      if (context.mounted) {
+        final exitEntry = OverlayEntry(
+          builder: (_) => const ColoredBox(
+            color: Colors.black,
+            child: SizedBox.expand(),
+          ),
+        );
+        Overlay.of(context).insert(exitEntry);
+        await SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
+        await Future.delayed(const Duration(milliseconds: 380));
+        exitEntry.remove();
+      } else {
+        await SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
+      }
     }
+  }
+
+  @override
+  State<FullscreenTimerScreen> createState() => _FullscreenTimerScreenState();
+}
+
+class _FullscreenTimerScreenState extends State<FullscreenTimerScreen> {
+  late final TimerNotifier _timer;
+  TimerPhase? _prevPhase;
+
+  bool _awaitingFlip = false;
+  double? _initialAccelX;
+  StreamSubscription<AccelerometerEvent>? _accelSub;
+
+  @override
+  void initState() {
+    super.initState();
+    _timer = context.read<TimerNotifier>();
+    _prevPhase = _timer.phase;
+    _timer.addListener(_onTimerChanged);
+    _sampleInitialX();
+  }
+
+  void _sampleInitialX() {
+    accelerometerEventStream(samplingPeriod: SensorInterval.normalInterval)
+        .first
+        .then((e) {
+      if (mounted) _initialAccelX = e.x;
+    });
+  }
+
+  void _onTimerChanged() {
+    if (!mounted) return;
+    if (_timer.phase != _prevPhase) {
+      setState(() {
+        _prevPhase = _timer.phase;
+        _awaitingFlip = true;
+      });
+      _beginFlipListening();
+    }
+  }
+
+  void _beginFlipListening() {
+    // Snapshot the current X to know the "start" side.
+    accelerometerEventStream(samplingPeriod: SensorInterval.normalInterval)
+        .first
+        .then((e) {
+      if (!mounted) return;
+      _initialAccelX = e.x;
+      _accelSub?.cancel();
+      _accelSub = accelerometerEventStream(
+        samplingPeriod: SensorInterval.normalInterval,
+      ).listen((e) {
+        if (_isFlipped180(e.x)) _onFlipConfirmed();
+      });
+    });
+  }
+
+  /// Detects a 180° landscape flip via accelerometer X axis:
+  ///   landscapeLeft  → x ≈ -9.8
+  ///   landscapeRight → x ≈ +9.8
+  bool _isFlipped180(double x) {
+    final init = _initialAccelX;
+    if (init == null) return false;
+    return (init < -4 && x > 4) || (init > 4 && x < -4);
+  }
+
+  void _onFlipConfirmed() {
+    _accelSub?.cancel();
+    _accelSub = null;
+    if (!mounted) return;
+    setState(() => _awaitingFlip = false);
+    _timer.toggle();
+    _sampleInitialX();
+  }
+
+  @override
+  void dispose() {
+    _timer.removeListener(_onTimerChanged);
+    _accelSub?.cancel();
+    super.dispose();
   }
 
   @override
@@ -33,6 +168,7 @@ class FullscreenTimerScreen extends StatelessWidget {
     final timer = context.watch<TimerNotifier>();
     final timeText =
         '${timer.minutes.toString().padLeft(2, '0')}:${timer.seconds.toString().padLeft(2, '0')}';
+    final phaseLabel = timer.isBreak ? 'BREAK' : 'FOCUS';
 
     return Scaffold(
       backgroundColor: const Color(0xFF1A1F1C),
@@ -55,9 +191,9 @@ class FullscreenTimerScreen extends StatelessWidget {
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  const Text(
-                    TimerNotifier.defaultTaskName,
-                    style: TextStyle(
+                  Text(
+                    phaseLabel,
+                    style: const TextStyle(
                       color: Color(0xFF4A5450),
                       fontSize: 16,
                       fontWeight: FontWeight.w500,
@@ -76,41 +212,125 @@ class FullscreenTimerScreen extends StatelessWidget {
                     ),
                   ),
                   const SizedBox(height: 28),
-                  GestureDetector(
-                    onTap: () => context.read<TimerNotifier>().toggle(),
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 36, vertical: 14),
-                      decoration: BoxDecoration(
-                        color: AppColors.accent.withValues(alpha: 0.12),
-                        borderRadius: BorderRadius.circular(40),
-                        border: Border.all(
-                          color: AppColors.accent.withValues(alpha: 0.4),
-                          width: 1.5,
-                        ),
-                      ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(
-                            timer.isRunning ? Icons.pause : Icons.play_arrow,
-                            color: AppColors.accent,
-                            size: 22,
-                          ),
-                          const SizedBox(width: 8),
-                          Text(
-                            timer.isRunning ? 'Pause' : 'Start',
-                            style: const TextStyle(
-                              color: AppColors.accent,
-                              fontSize: 16,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                        ],
-                      ),
+                  if (_awaitingFlip)
+                    _FlipPrompt(isBreak: timer.isBreak)
+                  else
+                    _PlayPauseButton(
+                      isRunning: timer.isRunning,
+                      onTap: timer.toggle,
                     ),
-                  ),
                 ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Flip prompt widget
+// ---------------------------------------------------------------------------
+
+class _FlipPrompt extends StatefulWidget {
+  final bool isBreak;
+  const _FlipPrompt({required this.isBreak});
+
+  @override
+  State<_FlipPrompt> createState() => _FlipPromptState();
+}
+
+class _FlipPromptState extends State<_FlipPrompt>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _ctrl;
+
+  @override
+  void initState() {
+    super.initState();
+    _ctrl = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1400),
+    )..repeat(reverse: true);
+  }
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final label = widget.isBreak ? 'start break' : 'next pomodoro';
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        AnimatedBuilder(
+          animation: _ctrl,
+          builder: (_, __) => Transform.rotate(
+            angle: _ctrl.value * pi,
+            child: const Icon(
+              Icons.screen_rotation_rounded,
+              color: AppColors.accent,
+              size: 44,
+            ),
+          ),
+        ),
+        const SizedBox(height: 14),
+        Text(
+          'Rotate 180° to $label',
+          style: const TextStyle(
+            color: Color(0xFF4A5450),
+            fontSize: 15,
+            fontWeight: FontWeight.w500,
+            letterSpacing: 0.4,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Play / Pause button
+// ---------------------------------------------------------------------------
+
+class _PlayPauseButton extends StatelessWidget {
+  final bool isRunning;
+  final VoidCallback onTap;
+
+  const _PlayPauseButton({required this.isRunning, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 36, vertical: 14),
+        decoration: BoxDecoration(
+          color: AppColors.accent.withValues(alpha: 0.12),
+          borderRadius: BorderRadius.circular(40),
+          border: Border.all(
+            color: AppColors.accent.withValues(alpha: 0.4),
+            width: 1.5,
+          ),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              isRunning ? Icons.pause : Icons.play_arrow,
+              color: AppColors.accent,
+              size: 22,
+            ),
+            const SizedBox(width: 8),
+            Text(
+              isRunning ? 'Pause' : 'Start',
+              style: const TextStyle(
+                color: AppColors.accent,
+                fontSize: 16,
+                fontWeight: FontWeight.w600,
               ),
             ),
           ],
