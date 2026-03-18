@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import '../../../../core/constants/app_colors.dart';
+import '../../../../core/services/audio_service.dart';
 import '../../../timer/domain/timer_notifier.dart';
 
 class SettingsScreen extends StatelessWidget {
@@ -26,21 +27,35 @@ class SettingsScreen extends StatelessWidget {
       ),
       body: ListView(
         padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
-        children: const [
-          _SectionLabel('Timer'),
-          SizedBox(height: 12),
-          _DurationTile(
+        children: [
+          const _SectionLabel('Timer'),
+          const SizedBox(height: 12),
+          const _DurationTile(
             label: 'Pomodoro',
             icon: Icons.timer_outlined,
             isPomodoro: true,
           ),
-          SizedBox(height: 12),
-          _DurationTile(
+          const SizedBox(height: 12),
+          const _DurationTile(
             label: 'Break',
             icon: Icons.coffee_outlined,
             isPomodoro: false,
           ),
-          SizedBox(height: 32),
+          const SizedBox(height: 32),
+          const _SectionLabel('Sounds'),
+          const SizedBox(height: 12),
+          const _SoundTile(
+            label: 'Pomodoro sound',
+            icon: Icons.timer_outlined,
+            isPomodoro: true,
+          ),
+          const SizedBox(height: 12),
+          const _SoundTile(
+            label: 'Break sound',
+            icon: Icons.coffee_outlined,
+            isPomodoro: false,
+          ),
+          const SizedBox(height: 32),
         ],
       ),
     );
@@ -358,6 +373,196 @@ class _TimeField extends StatelessWidget {
           ),
         ),
       ],
+    );
+  }
+}
+
+class _SoundTile extends StatelessWidget {
+  final String label;
+  final IconData icon;
+  final bool isPomodoro;
+
+  const _SoundTile({
+    required this.label,
+    required this.icon,
+    required this.isPomodoro,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final timer = context.watch<TimerNotifier>();
+    final currentFile =
+        isPomodoro ? timer.pomodoroSound : timer.breakSound;
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.04),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 36,
+            height: 36,
+            decoration: BoxDecoration(
+              color: AppColors.accentLight,
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Icon(icon, color: AppColors.accent, size: 18),
+          ),
+          const SizedBox(width: 16),
+          Expanded(
+            child: Text(
+              label,
+              style: const TextStyle(
+                color: AppColors.textPrimary,
+                fontSize: 16,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+          GestureDetector(
+            onTap: () => _showPickerSheet(context, currentFile),
+            child: Container(
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+              decoration: BoxDecoration(
+                color: AppColors.accentLight,
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Text(
+                AudioService.labelFor(currentFile),
+                style: const TextStyle(
+                  color: AppColors.accent,
+                  fontSize: 16,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showPickerSheet(BuildContext context, String currentFile) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (_) => _SoundPickerSheet(
+        currentFile: currentFile,
+        isPomodoro: isPomodoro,
+      ),
+    );
+  }
+}
+
+class _SoundPickerSheet extends StatelessWidget {
+  final String currentFile;
+  final bool isPomodoro;
+
+  const _SoundPickerSheet({
+    required this.currentFile,
+    required this.isPomodoro,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: const BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      padding: const EdgeInsets.fromLTRB(24, 20, 24, 32),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Center(
+            child: Container(
+              width: 36,
+              height: 4,
+              decoration: BoxDecoration(
+                color: AppColors.textSecondary.withValues(alpha: 0.3),
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+          ),
+          const SizedBox(height: 20),
+          Text(
+            isPomodoro ? 'Pomodoro sound' : 'Break sound',
+            style: const TextStyle(
+              color: AppColors.textPrimary,
+              fontSize: 18,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+          const SizedBox(height: 16),
+          ...AudioService.sounds.map((s) {
+            final selected = s.file == currentFile;
+            return Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: InkWell(
+                borderRadius: BorderRadius.circular(12),
+                onTap: () {
+                  final timer = context.read<TimerNotifier>();
+                  if (isPomodoro) {
+                    timer.setPomodoroSound(s.file);
+                  } else {
+                    timer.setBreakSound(s.file);
+                  }
+                  Navigator.pop(context);
+                },
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 16, vertical: 14),
+                  decoration: BoxDecoration(
+                    color: selected
+                        ? AppColors.accentLight
+                        : AppColors.background,
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          s.label,
+                          style: TextStyle(
+                            color: selected
+                                ? AppColors.accent
+                                : AppColors.textPrimary,
+                            fontSize: 16,
+                            fontWeight: selected
+                                ? FontWeight.w700
+                                : FontWeight.w500,
+                          ),
+                        ),
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.play_circle_outline),
+                        color: AppColors.accent,
+                        onPressed: () =>
+                            context.read<TimerNotifier>().previewSound(s.file),
+                      ),
+                      if (selected)
+                        const Icon(Icons.check_rounded,
+                            color: AppColors.accent, size: 20),
+                    ],
+                  ),
+                ),
+              ),
+            );
+          }),
+        ],
+      ),
     );
   }
 }
