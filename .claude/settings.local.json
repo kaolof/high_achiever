@@ -1,7 +1,8 @@
 {
   "permissions": {
     "allow": [
-      "Bash(flutter pub:*)"
+      "Bash(flutter pub:*)",
+      "Bash(curl -L -o \"c:/Users/Kao/OneDrive/Escritorio/flutter_projects/High_achiever/high_achiever/assets/sounds/timer_complete.mp3\" \"https://www.soundjay.com/misc/sounds/bell-ringing-05.mp3\")"
     ]
   }
 }
