@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:sensors_plus/sensors_plus.dart';
+import 'package:wakelock_plus/wakelock_plus.dart';
 
 import '../../../../core/constants/app_colors.dart';
 import '../../domain/timer_notifier.dart';
@@ -113,6 +114,7 @@ class _FullscreenTimerScreenState extends State<FullscreenTimerScreen> {
     _prevPhase = _timer.phase;
     _timer.addListener(_onTimerChanged);
     _sampleInitialX();
+    WakelockPlus.enable();
   }
 
   void _sampleInitialX() {
@@ -191,6 +193,7 @@ class _FullscreenTimerScreenState extends State<FullscreenTimerScreen> {
   void dispose() {
     _timer.removeListener(_onTimerChanged);
     _accelSub?.cancel();
+    WakelockPlus.disable();
     super.dispose();
   }
 
