@@ -4,25 +4,16 @@ import '../../../../core/constants/app_colors.dart';
 class SessionStats extends StatelessWidget {
   final int completedSessions;
   final int totalSessions;
-  final int streakDays;
 
   const SessionStats({
     super.key,
     required this.completedSessions,
     required this.totalSessions,
-    required this.streakDays,
   });
 
   @override
   Widget build(BuildContext context) {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.center,
-      children: [
-        _StatItem(label: 'TODAY', value: '$completedSessions/$totalSessions'),
-        const SizedBox(width: 40),
-        _StatItem(label: 'STREAK', value: '$streakDays Days'),
-      ],
-    );
+    return _StatItem(label: 'TODAY', value: '$completedSessions/$totalSessions');
   }
 }
 

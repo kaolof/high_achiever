@@ -193,7 +193,6 @@ class _TimerScreenState extends State<TimerScreen>
               builder: (_, stats, __) => SessionStats(
                 completedSessions: stats.$1,
                 totalSessions: stats.$2,
-                streakDays: 5,
               ),
             ),
             const Spacer(flex: 3),

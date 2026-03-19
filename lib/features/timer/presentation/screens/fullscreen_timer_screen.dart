@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:sensors_plus/sensors_plus.dart';
+import 'package:wakelock_plus/wakelock_plus.dart';
 
 import '../../../../core/constants/app_colors.dart';
 import '../../domain/timer_notifier.dart';
@@ -15,8 +16,25 @@ class FullscreenTimerScreen extends StatefulWidget {
   static const _bgColor = Color(0xFF1A1F1C);
 
   static Future<void> show(BuildContext context) async {
-    // Cover the screen immediately so the rotation is hidden behind a solid color.
+    // Capturar referencias al contexto antes de cualquier gap asíncrono.
     final overlayState = Overlay.of(context);
+    final navigator = Navigator.of(context);
+
+    // Detectar la orientación actual del dispositivo antes de rotar.
+    DeviceOrientation initialOrientation;
+    try {
+      final e = await accelerometerEventStream(
+        samplingPeriod: SensorInterval.normalInterval,
+      ).first.timeout(const Duration(milliseconds: 300));
+      // x > 0 → lado derecho hacia abajo → landscapeLeft
+      // x < 0 → lado izquierdo hacia abajo → landscapeRight
+      initialOrientation =
+          e.x > 0 ? DeviceOrientation.landscapeLeft : DeviceOrientation.landscapeRight;
+    } catch (_) {
+      initialOrientation = DeviceOrientation.landscapeLeft;
+    }
+
+    // Cover the screen immediately so the rotation is hidden behind a solid color.
     final entry = OverlayEntry(
       builder: (_) => const ColoredBox(
         color: _bgColor,
@@ -25,10 +43,7 @@ class FullscreenTimerScreen extends StatefulWidget {
     );
     overlayState.insert(entry);
 
-    await SystemChrome.setPreferredOrientations([
-      DeviceOrientation.landscapeLeft,
-      DeviceOrientation.landscapeRight,
-    ]);
+    await SystemChrome.setPreferredOrientations([initialOrientation]);
     // Wait for the physical rotation to settle.
     await Future.delayed(const Duration(milliseconds: 380));
 
@@ -36,8 +51,6 @@ class FullscreenTimerScreen extends StatefulWidget {
       entry.remove();
       return;
     }
-
-    final navigator = Navigator.of(context);
 
     // Remove overlay after the route has had two frames to paint itself.
     bool entryRemoved = false;
@@ -101,6 +114,7 @@ class _FullscreenTimerScreenState extends State<FullscreenTimerScreen> {
     _prevPhase = _timer.phase;
     _timer.addListener(_onTimerChanged);
     _sampleInitialX();
+    WakelockPlus.enable();
   }
 
   void _sampleInitialX() {
@@ -133,7 +147,7 @@ class _FullscreenTimerScreenState extends State<FullscreenTimerScreen> {
       _accelSub = accelerometerEventStream(
         samplingPeriod: SensorInterval.normalInterval,
       ).listen((e) {
-        if (_isFlipped180(e.x)) _onFlipConfirmed();
+        if (_isFlipped180(e.x)) _onFlipConfirmed(e.x);
       });
     });
   }
@@ -147,19 +161,39 @@ class _FullscreenTimerScreenState extends State<FullscreenTimerScreen> {
     return (init < -4 && x > 4) || (init > 4 && x < -4);
   }
 
-  void _onFlipConfirmed() {
+  void _onFlipConfirmed(double finalX) {
     _accelSub?.cancel();
     _accelSub = null;
     if (!mounted) return;
+
+    // Forzar la orientación que coincide con la posición física del teléfono
+    // x > 0 → el lado derecho del dispositivo apunta hacia abajo → landscapeLeft
+    // x < 0 → el lado izquierdo del dispositivo apunta hacia abajo → landscapeRight
+    final orientation = finalX > 0
+        ? DeviceOrientation.landscapeLeft
+        : DeviceOrientation.landscapeRight;
+    SystemChrome.setPreferredOrientations([orientation]);
+
     setState(() => _awaitingFlip = false);
     _timer.toggle();
-    _sampleInitialX();
+
+    // Restaurar ambas orientaciones tras el giro para permitir el siguiente volteo
+    Future.delayed(const Duration(milliseconds: 400), () {
+      if (mounted) {
+        SystemChrome.setPreferredOrientations([
+          DeviceOrientation.landscapeLeft,
+          DeviceOrientation.landscapeRight,
+        ]);
+        _sampleInitialX();
+      }
+    });
   }
 
   @override
   void dispose() {
     _timer.removeListener(_onTimerChanged);
     _accelSub?.cancel();
+    WakelockPlus.disable();
     super.dispose();
   }
 
