@@ -16,18 +16,18 @@ class FullscreenTimerScreen extends StatefulWidget {
   static const _bgColor = Color(0xFF1A1F1C);
 
   static Future<void> show(BuildContext context) async {
-    // Capturar referencias al contexto antes de cualquier gap asíncrono.
+    // Capture context references before any async gap.
     final overlayState = Overlay.of(context);
     final navigator = Navigator.of(context);
 
-    // Detectar la orientación actual del dispositivo antes de rotar.
+    // Detect the current device orientation before rotating.
     DeviceOrientation initialOrientation;
     try {
       final e = await accelerometerEventStream(
         samplingPeriod: SensorInterval.normalInterval,
       ).first.timeout(const Duration(milliseconds: 300));
-      // x > 0 → lado derecho hacia abajo → landscapeLeft
-      // x < 0 → lado izquierdo hacia abajo → landscapeRight
+      // x > 0 → right side down → landscapeLeft
+      // x < 0 → left side down → landscapeRight
       initialOrientation =
           e.x > 0 ? DeviceOrientation.landscapeLeft : DeviceOrientation.landscapeRight;
     } catch (_) {
@@ -166,9 +166,9 @@ class _FullscreenTimerScreenState extends State<FullscreenTimerScreen> {
     _accelSub = null;
     if (!mounted) return;
 
-    // Forzar la orientación que coincide con la posición física del teléfono
-    // x > 0 → el lado derecho del dispositivo apunta hacia abajo → landscapeLeft
-    // x < 0 → el lado izquierdo del dispositivo apunta hacia abajo → landscapeRight
+    // Force the orientation that matches the physical position of the phone.
+    // x > 0 → right side of device points down → landscapeLeft
+    // x < 0 → left side of device points down → landscapeRight
     final orientation = finalX > 0
         ? DeviceOrientation.landscapeLeft
         : DeviceOrientation.landscapeRight;
@@ -177,7 +177,7 @@ class _FullscreenTimerScreenState extends State<FullscreenTimerScreen> {
     setState(() => _awaitingFlip = false);
     _timer.toggle();
 
-    // Restaurar ambas orientaciones tras el giro para permitir el siguiente volteo
+    // Restore both orientations after the rotation to allow the next flip.
     Future.delayed(const Duration(milliseconds: 400), () {
       if (mounted) {
         SystemChrome.setPreferredOrientations([

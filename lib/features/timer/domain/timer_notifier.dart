@@ -46,7 +46,7 @@ class TimerNotifier extends ChangeNotifier {
   String get pomodoroSound => _pomodoroSound;
   String get breakSound => _breakSound;
 
-  /// true durante 1 segundo al terminar una fase (para animar la UI)
+  /// true for 1 second when a phase ends (to animate the UI)
   bool get justCompleted => _justCompleted;
 
   final SharedPreferences _prefs;
@@ -87,7 +87,7 @@ class TimerNotifier extends ChangeNotifier {
     }
   }
 
-  /// Recalcula el tiempo restante basado en cuánto tiempo pasó en background.
+  /// Recalculates remaining time based on how much time passed in the background.
   void reconcileAfterBackground() {
     if (!_isRunning) return;
     _reconcileFromPrefs();
@@ -259,7 +259,7 @@ class TimerNotifier extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// Salta el break actual y vuelve al pomodoro listo para iniciar.
+  /// Skips the current break and returns to a ready pomodoro.
   void skipBreak() {
     if (_phase != TimerPhase.breakTime) return;
     _timer?.cancel();
