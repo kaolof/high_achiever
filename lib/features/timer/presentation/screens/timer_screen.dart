@@ -178,7 +178,7 @@ class _TimerScreenState extends State<TimerScreen>
           crossAxisAlignment: CrossAxisAlignment.center,
           children: [
             const SizedBox(height: 16),
-            // ── Label ──────────────────────────────────────────────────────
+            // ── Label ─────────────────────────────────────────────────────
             const Text(
               'CURRENT TASK',
               style: TextStyle(
