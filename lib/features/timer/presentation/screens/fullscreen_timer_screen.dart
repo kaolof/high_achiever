@@ -99,7 +99,8 @@ class FullscreenTimerScreen extends StatefulWidget {
   State<FullscreenTimerScreen> createState() => _FullscreenTimerScreenState();
 }
 
-class _FullscreenTimerScreenState extends State<FullscreenTimerScreen> {
+class _FullscreenTimerScreenState extends State<FullscreenTimerScreen>
+    with WidgetsBindingObserver {
   late final TimerNotifier _timer;
   TimerPhase? _prevPhase;
 
@@ -113,6 +114,7 @@ class _FullscreenTimerScreenState extends State<FullscreenTimerScreen> {
     _timer = context.read<TimerNotifier>();
     _prevPhase = _timer.phase;
     _timer.addListener(_onTimerChanged);
+    WidgetsBinding.instance.addObserver(this);
     _sampleInitialX();
     WakelockPlus.enable();
   }
@@ -190,8 +192,16 @@ class _FullscreenTimerScreenState extends State<FullscreenTimerScreen> {
   }
 
   @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed && _awaitingFlip) {
+      _beginFlipListening();
+    }
+  }
+
+  @override
   void dispose() {
     _timer.removeListener(_onTimerChanged);
+    WidgetsBinding.instance.removeObserver(this);
     _accelSub?.cancel();
     WakelockPlus.disable();
     super.dispose();
