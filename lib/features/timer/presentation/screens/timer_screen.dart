@@ -1,3 +1,4 @@
+import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../../../core/constants/app_colors.dart';
@@ -31,6 +32,44 @@ class _TimerScreenState extends State<TimerScreen>
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
       _timer.reconcileAfterBackground();
+    }
+  }
+
+  Future<void> _confirmResetSession(BuildContext context) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppColors.surfaceContainerLowest,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: const Text(
+          'Reset session?',
+          style: TextStyle(
+            color: AppColors.textPrimary,
+            fontWeight: FontWeight.w800,
+            fontSize: 18,
+          ),
+        ),
+        content: const Text(
+          'This will reset your completed pomodoros to 0 and stop the current timer.',
+          style: TextStyle(color: AppColors.textSecondary, fontSize: 14),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel',
+                style: TextStyle(color: AppColors.textSecondary)),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Reset',
+                style: TextStyle(
+                    color: Colors.red, fontWeight: FontWeight.w700)),
+          ),
+        ],
+      ),
+    );
+    if (confirmed == true && context.mounted) {
+      context.read<TimerNotifier>().resetSession();
     }
   }
 
@@ -107,6 +146,10 @@ class _TimerScreenState extends State<TimerScreen>
                   context,
                   MaterialPageRoute(builder: (_) => const SettingsScreen()),
                 );
+              } else if (value == 'set_goal') {
+                showDailyGoalSheet(context);
+              } else if (value == 'reset_session') {
+                _confirmResetSession(context);
               }
             },
             itemBuilder: (_) => [
@@ -134,6 +177,40 @@ class _TimerScreenState extends State<TimerScreen>
                       'Settings',
                       style: TextStyle(
                         color: AppColors.textPrimary,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const PopupMenuItem<String>(
+                value: 'set_goal',
+                child: Row(
+                  children: [
+                    Icon(Icons.flag_rounded,
+                        color: AppColors.textPrimary, size: 20),
+                    SizedBox(width: 12),
+                    Text(
+                      'Set daily goal',
+                      style: TextStyle(
+                        color: AppColors.textPrimary,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const PopupMenuItem<String>(
+                value: 'reset_session',
+                child: Row(
+                  children: [
+                    Icon(Icons.restart_alt_rounded,
+                        color: Colors.red, size: 20),
+                    SizedBox(width: 12),
+                    Text(
+                      'Reset session',
+                      style: TextStyle(
+                        color: Colors.red,
                         fontWeight: FontWeight.w500,
                       ),
                     ),
@@ -201,30 +278,6 @@ class _TimerScreenState extends State<TimerScreen>
               selector: (_, t) => t.isBreak,
               builder: (_, isBreak, __) => _SessionBadge(isBreak: isBreak),
             ),
-            const SizedBox(height: 32),
-            // ── Progress + Objective cards ─────────────────────────────────
-            Selector<TimerNotifier, (int, int)>(
-              selector: (_, t) => (t.completedToday, t.dailyGoal),
-              builder: (_, stats, __) => IntrinsicHeight(
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    Expanded(
-                      child: _ProgressCard(
-                        completed: stats.$1,
-                        total: stats.$2,
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: _ObjectiveCard(
-                        onTap: () => showDailyGoalSheet(context),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
             const SizedBox(height: 40),
             // ── Action button + skip ───────────────────────────────────────
             Selector<TimerNotifier, (bool, bool)>(
@@ -245,7 +298,19 @@ class _TimerScreenState extends State<TimerScreen>
                 ],
               ),
             ),
-            const SizedBox(height: 36),
+            const SizedBox(height: 32),
+            // ── Progress bar ───────────────────────────────────────────────
+            Selector<TimerNotifier, (int, int)>(
+              selector: (_, t) => (t.completedToday, t.dailyGoal),
+              builder: (_, stats, __) => _ProgressBar(
+                completed: stats.$1,
+                total: stats.$2,
+              ),
+            ),
+            const SizedBox(height: 20),
+            // ── Motivational quote ─────────────────────────────────────────
+            const _QuoteCard(),
+            const SizedBox(height: 24),
           ],
         ),
       ),
@@ -293,79 +358,24 @@ class _SessionBadge extends StatelessWidget {
   }
 }
 
-// ── Progress card ──────────────────────────────────────────────────────────
-class _ProgressCard extends StatelessWidget {
+// ── Progress bar ───────────────────────────────────────────────────────────
+class _ProgressBar extends StatelessWidget {
   final int completed;
   final int total;
 
-  const _ProgressCard({required this.completed, required this.total});
+  const _ProgressBar({required this.completed, required this.total});
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.fromLTRB(16, 14, 16, 18),
-      decoration: BoxDecoration(
-        color: AppColors.surfaceContainerLowest,
-        borderRadius: BorderRadius.circular(20),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Text(
-            'PROGRESS',
-            style: TextStyle(
-              color: AppColors.textSecondary,
-              fontSize: 11,
-              fontWeight: FontWeight.w600,
-              letterSpacing: 1.2,
-            ),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            '$completed/$total',
-            style: const TextStyle(
-              color: AppColors.textPrimary,
-              fontSize: 32,
-              fontWeight: FontWeight.w800,
-              height: 1,
-            ),
-          ),
-          const SizedBox(height: 4),
-          const Text(
-            "Today's Sessions",
-            style: TextStyle(
-              color: AppColors.textSecondary,
-              fontSize: 12,
-              fontWeight: FontWeight.w400,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-// ── Objective card (Set Daily Goal) ───────────────────────────────────────
-class _ObjectiveCard extends StatelessWidget {
-  final VoidCallback onTap;
-
-  const _ObjectiveCard({required this.onTap});
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.fromLTRB(16, 14, 16, 18),
-        decoration: BoxDecoration(
-          color: AppColors.surfaceContainerLow,
-          borderRadius: BorderRadius.circular(20),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+    final ratio = total > 0 ? (completed / total).clamp(0.0, 1.0) : 0.0;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
             const Text(
-              'OBJECTIVE',
+              'PROGRESS',
               style: TextStyle(
                 color: AppColors.textSecondary,
                 fontSize: 11,
@@ -373,36 +383,28 @@ class _ObjectiveCard extends StatelessWidget {
                 letterSpacing: 1.2,
               ),
             ),
-            const SizedBox(height: 8),
-            const Text(
-              'Set Daily\nGoal',
-              style: TextStyle(
+            Text(
+              '$completed/$total Sessions Today',
+              style: const TextStyle(
                 color: AppColors.textPrimary,
-                fontSize: 20,
-                fontWeight: FontWeight.w700,
-                height: 1.2,
-              ),
-            ),
-            const SizedBox(height: 10),
-            Container(
-              width: 28,
-              height: 28,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                border: Border.all(
-                  color: AppColors.primary,
-                  width: 1.5,
-                ),
-              ),
-              child: const Icon(
-                Icons.add,
-                color: AppColors.primary,
-                size: 16,
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
               ),
             ),
           ],
         ),
-      ),
+        const SizedBox(height: 10),
+        ClipRRect(
+          borderRadius: BorderRadius.circular(9999),
+          child: LinearProgressIndicator(
+            value: ratio,
+            minHeight: 8,
+            backgroundColor: AppColors.surfaceContainerLow,
+            valueColor:
+                const AlwaysStoppedAnimation<Color>(AppColors.primary),
+          ),
+        ),
+      ],
     );
   }
 }
@@ -497,6 +499,94 @@ class _StartButtonState extends State<_StartButton> {
             ],
           ),
         ),
+      ),
+    );
+  }
+}
+
+// ── Motivational quote card ────────────────────────────────────────────────
+const _quotes = [
+  ('"Focus is a superpower."', 'KINETIC MINDSET'),
+  ('"Small steps every day lead to big results."', 'GROWTH HABIT'),
+  ('"You don\'t need motivation, you need discipline."', 'DEEP WORK'),
+  ('"Progress, not perfection."', 'MINDFUL FOCUS'),
+  ('"One session at a time."', 'POMODORO METHOD'),
+  ('"Consistency beats intensity."', 'HIGH ACHIEVER'),
+  ('"Done is better than perfect."', 'EXECUTION MODE'),
+  ('"Protect your focus like it\'s your most valuable asset."', 'DEEP WORK'),
+];
+
+class _QuoteCard extends StatefulWidget {
+  const _QuoteCard();
+
+  @override
+  State<_QuoteCard> createState() => _QuoteCardState();
+}
+
+class _QuoteCardState extends State<_QuoteCard> {
+  late final ({String quote, String source}) _entry;
+
+  @override
+  void initState() {
+    super.initState();
+    final r = Random();
+    final pick = _quotes[r.nextInt(_quotes.length)];
+    _entry = (quote: pick.$1, source: pick.$2);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.fromLTRB(20, 18, 20, 20),
+      decoration: BoxDecoration(
+        color: AppColors.surfaceContainerLowest,
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            '\u201C',
+            style: TextStyle(
+              color: AppColors.primary,
+              fontSize: 48,
+              fontWeight: FontWeight.w700,
+              height: 0.8,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            _entry.quote,
+            style: const TextStyle(
+              color: AppColors.textPrimary,
+              fontSize: 22,
+              fontWeight: FontWeight.w700,
+              fontStyle: FontStyle.italic,
+              height: 1.3,
+            ),
+          ),
+          const SizedBox(height: 16),
+          Row(
+            children: [
+              Container(
+                width: 28,
+                height: 1.5,
+                color: AppColors.textSecondary,
+              ),
+              const SizedBox(width: 10),
+              Text(
+                _entry.source,
+                style: const TextStyle(
+                  color: AppColors.textSecondary,
+                  fontSize: 11,
+                  fontWeight: FontWeight.w600,
+                  letterSpacing: 1.3,
+                ),
+              ),
+            ],
+          ),
+        ],
       ),
     );
   }
