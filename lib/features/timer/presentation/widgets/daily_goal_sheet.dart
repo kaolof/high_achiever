@@ -61,7 +61,7 @@ class _DailyGoalSheetState extends State<_DailyGoalSheet> {
                 width: 40,
                 height: 4,
                 decoration: BoxDecoration(
-                  color: AppColors.navBorder,
+                  color: AppColors.outlineVariant.withValues(alpha: 0.40),
                   borderRadius: BorderRadius.circular(2),
                 ),
               ),

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'core/providers/app_settings_notifier.dart';
 import 'core/services/audio_service.dart';
 import 'core/theme/app_theme.dart';
 import 'features/timer/domain/timer_notifier.dart';
@@ -20,8 +21,11 @@ class HighAchieverApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return ChangeNotifierProvider(
-      create: (_) => TimerNotifier(prefs, AudioService()),
+    return MultiProvider(
+      providers: [
+        ChangeNotifierProvider(create: (_) => TimerNotifier(prefs, AudioService())),
+        ChangeNotifierProvider(create: (_) => AppSettingsNotifier(prefs)),
+      ],
       child: MaterialApp(
         title: 'High Achiever',
         debugShowCheckedModeBanner: false,
