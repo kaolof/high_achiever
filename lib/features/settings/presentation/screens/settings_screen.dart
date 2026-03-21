@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import '../../../../core/constants/app_colors.dart';
+import '../../../../core/providers/app_settings_notifier.dart';
 import '../../../../core/services/audio_service.dart';
 import '../../../timer/domain/timer_notifier.dart';
 
@@ -41,6 +42,8 @@ class SettingsScreen extends StatelessWidget {
             icon: Icons.coffee_outlined,
             isPomodoro: false,
           ),
+          const SizedBox(height: 12),
+          const _FlipModeTile(),
           const SizedBox(height: 32),
           const _SectionLabel('Sounds'),
           const SizedBox(height: 12),
@@ -75,6 +78,100 @@ class _SectionLabel extends StatelessWidget {
         fontSize: 11,
         fontWeight: FontWeight.w700,
         letterSpacing: 1.4,
+      ),
+    );
+  }
+}
+
+class _FlipModeTile extends StatelessWidget {
+  const _FlipModeTile();
+
+  @override
+  Widget build(BuildContext context) {
+    final settings = context.watch<AppSettingsNotifier>();
+    return _ToggleTile(
+      icon: Icons.screen_rotation_rounded,
+      label: 'Flip Mode',
+      description: 'Rotate the phone 180° in fullscreen to start the next session',
+      value: settings.flipMode,
+      onChanged: (v) => settings.flipMode = v,
+    );
+  }
+}
+
+class _ToggleTile extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final String description;
+  final bool value;
+  final ValueChanged<bool> onChanged;
+
+  const _ToggleTile({
+    required this.icon,
+    required this.label,
+    required this.description,
+    required this.value,
+    required this.onChanged,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+      decoration: BoxDecoration(
+        color: AppColors.surfaceContainerLowest,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: AppColors.onSecondaryFixed.withValues(alpha: 0.04),
+            blurRadius: 32,
+            offset: Offset.zero,
+          ),
+        ],
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 36,
+            height: 36,
+            decoration: BoxDecoration(
+              color: AppColors.accentLight,
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Icon(icon, color: AppColors.accent, size: 18),
+          ),
+          const SizedBox(width: 16),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  label,
+                  style: const TextStyle(
+                    color: AppColors.textPrimary,
+                    fontSize: 16,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                const SizedBox(height: 3),
+                Text(
+                  description,
+                  style: const TextStyle(
+                    color: AppColors.textSecondary,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w400,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 12),
+          Switch(
+            value: value,
+            onChanged: onChanged,
+            activeThumbColor: AppColors.accent,
+          ),
+        ],
       ),
     );
   }
