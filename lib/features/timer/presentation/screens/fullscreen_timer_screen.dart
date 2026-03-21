@@ -8,6 +8,7 @@ import 'package:sensors_plus/sensors_plus.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
 
 import '../../../../core/constants/app_colors.dart';
+import '../../../../core/providers/app_settings_notifier.dart';
 import '../../domain/timer_notifier.dart';
 
 class FullscreenTimerScreen extends StatefulWidget {
@@ -102,6 +103,7 @@ class FullscreenTimerScreen extends StatefulWidget {
 class _FullscreenTimerScreenState extends State<FullscreenTimerScreen>
     with WidgetsBindingObserver {
   late final TimerNotifier _timer;
+  late final AppSettingsNotifier _settings;
   TimerPhase? _prevPhase;
 
   bool _awaitingFlip = false;
@@ -112,6 +114,7 @@ class _FullscreenTimerScreenState extends State<FullscreenTimerScreen>
   void initState() {
     super.initState();
     _timer = context.read<TimerNotifier>();
+    _settings = context.read<AppSettingsNotifier>();
     _prevPhase = _timer.phase;
     _timer.addListener(_onTimerChanged);
     WidgetsBinding.instance.addObserver(this);
@@ -130,11 +133,12 @@ class _FullscreenTimerScreenState extends State<FullscreenTimerScreen>
   void _onTimerChanged() {
     if (!mounted) return;
     if (_timer.phase != _prevPhase) {
+      final flipEnabled = _settings.flipMode;
       setState(() {
         _prevPhase = _timer.phase;
-        _awaitingFlip = true;
+        _awaitingFlip = flipEnabled;
       });
-      _beginFlipListening();
+      if (flipEnabled) _beginFlipListening();
     }
   }
 
