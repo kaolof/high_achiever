@@ -1,8 +1,11 @@
+import 'dart:ui';
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import '../core/constants/app_colors.dart';
+import '../core/providers/app_settings_notifier.dart';
 import '../features/timer/presentation/screens/timer_screen.dart';
 import '../features/history/presentation/screens/history_screen.dart';
-import '../features/settings/presentation/screens/settings_screen.dart';
+import '../features/fichas/presentation/screens/fichas_screen.dart';
 
 class MainScaffold extends StatefulWidget {
   const MainScaffold({super.key});
@@ -14,54 +17,104 @@ class MainScaffold extends StatefulWidget {
 class _MainScaffoldState extends State<MainScaffold> {
   int _currentIndex = 1;
 
-  final List<Widget> _screens = const [
+  static const _baseScreens = [
     HistoryScreen(),
     TimerScreen(),
-    SettingsScreen(),
   ];
 
   @override
   Widget build(BuildContext context) {
+    final showTokens = context.watch<AppSettingsNotifier>().showTokensTab;
+
+    // If tokens tab was hidden while it was active, fall back to timer
+    final screens = [
+      ..._baseScreens,
+      if (showTokens) const FichasScreen(),
+    ];
+    final safeIndex = _currentIndex.clamp(0, screens.length - 1);
+
     return Scaffold(
-      body: _screens[_currentIndex],
-      bottomNavigationBar: Container(
-        decoration: const BoxDecoration(
-          color: AppColors.navBackground,
-          border: Border(
-            top: BorderSide(color: AppColors.navBorder, width: 1),
+      extendBody: true,
+      body: screens[safeIndex],
+      bottomNavigationBar: _GlassTabBar(
+        currentIndex: safeIndex,
+        showTokens: showTokens,
+        onTap: (i) => setState(() => _currentIndex = i),
+      ),
+    );
+  }
+}
+
+class _GlassTabBar extends StatelessWidget {
+  final int currentIndex;
+  final bool showTokens;
+  final ValueChanged<int> onTap;
+
+  const _GlassTabBar({
+    required this.currentIndex,
+    required this.showTokens,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final items = [
+      (Icons.history_rounded, 'HISTORY'),
+      (Icons.timer_outlined, 'TIMER'),
+      if (showTokens) (Icons.military_tech_rounded, 'TOKENS'),
+    ];
+
+    return ClipRect(
+      child: BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
+        child: Container(
+          height: 64 + MediaQuery.of(context).padding.bottom,
+          color: AppColors.surface.withValues(alpha: 0.80),
+          padding: EdgeInsets.only(bottom: MediaQuery.of(context).padding.bottom),
+          child: Row(
+            children: List.generate(items.length, (i) {
+              final (icon, label) = items[i];
+              final active = i == currentIndex;
+              return Expanded(
+                child: GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTap: () => onTap(i),
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(
+                        icon,
+                        size: 22,
+                        color: active ? AppColors.primary : AppColors.secondary,
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        label,
+                        style: TextStyle(
+                          fontSize: 10,
+                          fontWeight: FontWeight.w600,
+                          letterSpacing: 0.8,
+                          color: active
+                              ? AppColors.primary
+                              : AppColors.secondary,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      AnimatedContainer(
+                        duration: const Duration(milliseconds: 200),
+                        width: active ? 4 : 0,
+                        height: active ? 4 : 0,
+                        decoration: const BoxDecoration(
+                          color: AppColors.primary,
+                          shape: BoxShape.circle,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              );
+            }),
           ),
-        ),
-        child: BottomNavigationBar(
-          currentIndex: _currentIndex,
-          onTap: (index) => setState(() => _currentIndex = index),
-          backgroundColor: Colors.transparent,
-          elevation: 0,
-          selectedItemColor: AppColors.accent,
-          unselectedItemColor: AppColors.textSecondary,
-          selectedLabelStyle: const TextStyle(
-            fontSize: 11,
-            fontWeight: FontWeight.w600,
-            letterSpacing: 0.8,
-          ),
-          unselectedLabelStyle: const TextStyle(
-            fontSize: 11,
-            fontWeight: FontWeight.w500,
-            letterSpacing: 0.8,
-          ),
-          items: const [
-            BottomNavigationBarItem(
-              icon: Icon(Icons.history_rounded),
-              label: 'HISTORY',
-            ),
-            BottomNavigationBarItem(
-              icon: Icon(Icons.timer_outlined),
-              label: 'TIMER',
-            ),
-            BottomNavigationBarItem(
-              icon: Icon(Icons.settings_outlined),
-              label: 'SETTINGS',
-            ),
-          ],
         ),
       ),
     );

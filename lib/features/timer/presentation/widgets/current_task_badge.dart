@@ -10,16 +10,17 @@ class CurrentTaskBadge extends StatelessWidget {
   Widget build(BuildContext context) {
     return Column(
       children: [
+        // Badge on surfaceContainerLow — no border, just color shift
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
           decoration: BoxDecoration(
-            color: AppColors.accentLight,
-            borderRadius: BorderRadius.circular(20),
+            color: AppColors.surfaceContainerLow,
+            borderRadius: BorderRadius.circular(9999),
           ),
           child: const Text(
             'Current Task',
             style: TextStyle(
-              color: AppColors.accent,
+              color: AppColors.secondary,
               fontSize: 13,
               fontWeight: FontWeight.w500,
             ),
@@ -29,7 +30,7 @@ class CurrentTaskBadge extends StatelessWidget {
         Text(
           taskName,
           style: const TextStyle(
-            color: AppColors.textSecondary,
+            color: AppColors.onSecondaryFixed,
             fontSize: 20,
             fontWeight: FontWeight.w400,
           ),

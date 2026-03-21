@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
 import '../../../../core/constants/app_colors.dart';
 
 class TimerDisplay extends StatelessWidget {
@@ -18,8 +19,8 @@ class TimerDisplay extends StatelessWidget {
 
     return Text(
       timeText,
-      style: const TextStyle(
-        color: AppColors.textPrimary,
+      style: GoogleFonts.spaceGrotesk(
+        color: AppColors.onSecondaryFixed,
         fontSize: 96,
         fontWeight: FontWeight.w800,
         letterSpacing: -2,

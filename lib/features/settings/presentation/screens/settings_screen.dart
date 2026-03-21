@@ -11,9 +11,9 @@ class SettingsScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppColors.background,
+      backgroundColor: AppColors.surfaceContainerLow,
       appBar: AppBar(
-        backgroundColor: AppColors.background,
+        backgroundColor: AppColors.surfaceContainerLow,
         elevation: 0,
         titleSpacing: 24,
         title: const Text(
@@ -102,13 +102,13 @@ class _DurationTile extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: AppColors.surfaceContainerLowest,
         borderRadius: BorderRadius.circular(16),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.04),
-            blurRadius: 8,
-            offset: const Offset(0, 2),
+            color: AppColors.onSecondaryFixed.withValues(alpha: 0.04),
+            blurRadius: 32,
+            offset: Offset.zero,
           ),
         ],
       ),
@@ -217,7 +217,7 @@ class _DurationEditSheetState extends State<_DurationEditSheet> {
     final secs = int.tryParse(_secsCtrl.text) ?? 0;
     final total = mins * 60 + secs;
 
-    if (total <= 0) return; // no permitir 0 segundos
+    if (total <= 0) return; // do not allow 0 seconds
 
     final timer = context.read<TimerNotifier>();
     if (widget.isPomodoro) {
@@ -236,7 +236,7 @@ class _DurationEditSheetState extends State<_DurationEditSheet> {
       ),
       child: Container(
         decoration: const BoxDecoration(
-          color: Colors.white,
+          color: AppColors.surfaceContainerLowest,
           borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
         ),
         padding: const EdgeInsets.fromLTRB(24, 20, 24, 32),
@@ -249,7 +249,7 @@ class _DurationEditSheetState extends State<_DurationEditSheet> {
                 width: 36,
                 height: 4,
                 decoration: BoxDecoration(
-                  color: AppColors.textSecondary.withValues(alpha: 0.3),
+                  color: AppColors.outlineVariant.withValues(alpha: 0.40),
                   borderRadius: BorderRadius.circular(2),
                 ),
               ),
@@ -300,10 +300,10 @@ class _DurationEditSheetState extends State<_DurationEditSheet> {
               child: ElevatedButton(
                 onPressed: _save,
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: AppColors.accent,
-                  foregroundColor: AppColors.textPrimary,
+                  backgroundColor: AppColors.primary,
+                  foregroundColor: AppColors.surfaceContainerLowest,
                   shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(16),
+                    borderRadius: BorderRadius.circular(9999),
                   ),
                   elevation: 0,
                 ),
@@ -360,7 +360,7 @@ class _TimeField extends StatelessWidget {
           ),
           decoration: InputDecoration(
             filled: true,
-            fillColor: AppColors.background,
+            fillColor: AppColors.surfaceContainerLow,
             border: OutlineInputBorder(
               borderRadius: BorderRadius.circular(12),
               borderSide: BorderSide.none,
@@ -397,13 +397,13 @@ class _SoundTile extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: AppColors.surfaceContainerLowest,
         borderRadius: BorderRadius.circular(16),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.04),
-            blurRadius: 8,
-            offset: const Offset(0, 2),
+            color: AppColors.onSecondaryFixed.withValues(alpha: 0.04),
+            blurRadius: 32,
+            offset: Offset.zero,
           ),
         ],
       ),
@@ -478,7 +478,7 @@ class _SoundPickerSheet extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       decoration: const BoxDecoration(
-        color: Colors.white,
+        color: AppColors.surfaceContainerLowest,
         borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
       ),
       padding: const EdgeInsets.fromLTRB(24, 20, 24, 32),
@@ -491,7 +491,7 @@ class _SoundPickerSheet extends StatelessWidget {
               width: 36,
               height: 4,
               decoration: BoxDecoration(
-                color: AppColors.textSecondary.withValues(alpha: 0.3),
+                color: AppColors.outlineVariant.withValues(alpha: 0.40),
                 borderRadius: BorderRadius.circular(2),
               ),
             ),
