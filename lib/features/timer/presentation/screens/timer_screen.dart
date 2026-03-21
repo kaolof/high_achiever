@@ -35,6 +35,44 @@ class _TimerScreenState extends State<TimerScreen>
     }
   }
 
+  Future<void> _confirmResetSession(BuildContext context) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppColors.surfaceContainerLowest,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: const Text(
+          'Reset session?',
+          style: TextStyle(
+            color: AppColors.textPrimary,
+            fontWeight: FontWeight.w800,
+            fontSize: 18,
+          ),
+        ),
+        content: const Text(
+          'This will reset your completed pomodoros to 0 and stop the current timer.',
+          style: TextStyle(color: AppColors.textSecondary, fontSize: 14),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel',
+                style: TextStyle(color: AppColors.textSecondary)),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Reset',
+                style: TextStyle(
+                    color: Colors.red, fontWeight: FontWeight.w700)),
+          ),
+        ],
+      ),
+    );
+    if (confirmed == true && context.mounted) {
+      context.read<TimerNotifier>().resetSession();
+    }
+  }
+
   void _onTimerChanged() {
     if (!mounted) return;
     if (_timer.justCompleted) {
@@ -110,6 +148,8 @@ class _TimerScreenState extends State<TimerScreen>
                 );
               } else if (value == 'set_goal') {
                 showDailyGoalSheet(context);
+              } else if (value == 'reset_session') {
+                _confirmResetSession(context);
               }
             },
             itemBuilder: (_) => [
@@ -154,6 +194,23 @@ class _TimerScreenState extends State<TimerScreen>
                       'Set daily goal',
                       style: TextStyle(
                         color: AppColors.textPrimary,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const PopupMenuItem<String>(
+                value: 'reset_session',
+                child: Row(
+                  children: [
+                    Icon(Icons.restart_alt_rounded,
+                        color: Colors.red, size: 20),
+                    SizedBox(width: 12),
+                    Text(
+                      'Reset session',
+                      style: TextStyle(
+                        color: Colors.red,
                         fontWeight: FontWeight.w500,
                       ),
                     ),
