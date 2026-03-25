@@ -107,7 +107,9 @@ class _FullscreenTimerScreenState extends State<FullscreenTimerScreen>
   TimerPhase? _prevPhase;
 
   bool _awaitingFlip = false;
-  double? _initialAccelX;
+  double? _initialAccelZ;
+  double _maxAccelX = 0;
+  double _minAccelX = 0;
   StreamSubscription<AccelerometerEvent>? _accelSub;
 
   @override
@@ -118,15 +120,17 @@ class _FullscreenTimerScreenState extends State<FullscreenTimerScreen>
     _prevPhase = _timer.phase;
     _timer.addListener(_onTimerChanged);
     WidgetsBinding.instance.addObserver(this);
-    _sampleInitialX();
+    _sampleInitialAccel();
     WakelockPlus.enable();
   }
 
-  void _sampleInitialX() {
+  void _sampleInitialAccel() {
     accelerometerEventStream(samplingPeriod: SensorInterval.normalInterval)
         .first
         .then((e) {
-      if (mounted) _initialAccelX = e.x;
+      if (mounted) {
+        _initialAccelZ = e.z;
+      }
     });
   }
 
@@ -143,28 +147,38 @@ class _FullscreenTimerScreenState extends State<FullscreenTimerScreen>
   }
 
   void _beginFlipListening() {
-    // Snapshot the current X to know the "start" side.
+    // Snapshot the current position to know the "start" side.
     accelerometerEventStream(samplingPeriod: SensorInterval.normalInterval)
         .first
         .then((e) {
       if (!mounted) return;
-      _initialAccelX = e.x;
+      _initialAccelZ = e.z;
+      _maxAccelX = e.x;
+      _minAccelX = e.x;
       _accelSub?.cancel();
       _accelSub = accelerometerEventStream(
         samplingPeriod: SensorInterval.normalInterval,
       ).listen((e) {
-        if (_isFlipped180(e.x)) _onFlipConfirmed(e.x);
+        _maxAccelX = max(_maxAccelX, e.x);
+        _minAccelX = min(_minAccelX, e.x);
+        if (_isFlipped180(e)) _onFlipConfirmed(e.x);
       });
     });
   }
 
-  /// Detects a 180° landscape flip via accelerometer X axis:
-  ///   landscapeLeft  → x ≈ -9.8
-  ///   landscapeRight → x ≈ +9.8
-  bool _isFlipped180(double x) {
-    final init = _initialAccelX;
-    if (init == null) return false;
-    return (init < -4 && x > 4) || (init > 4 && x < -4);
+  /// Detects a 180° flip via accelerometer.
+  ///
+  /// X-axis roll: tracks max and min X seen since listening started.
+  /// If X has crossed both +6 and -6, the phone has rotated 180° regardless
+  /// of starting position (flat, landscape-left, landscape-right, etc.).
+  ///
+  /// Z-axis flip: face-up (z ≈ +9.8) → face-down (z ≈ -9.8).
+  bool _isFlipped180(AccelerometerEvent e) {
+    final landscapeFlip = _maxAccelX > 6 && _minAccelX < -6;
+    final initZ = _initialAccelZ;
+    final faceFlip = initZ != null &&
+        ((initZ > 4 && e.z < -4) || (initZ < -4 && e.z > 4));
+    return landscapeFlip || faceFlip;
   }
 
   void _onFlipConfirmed(double finalX) {
@@ -175,10 +189,13 @@ class _FullscreenTimerScreenState extends State<FullscreenTimerScreen>
     // Force the orientation that matches the physical position of the phone.
     // x > 0 → right side of device points down → landscapeLeft
     // x < 0 → left side of device points down → landscapeRight
-    final orientation = finalX > 0
-        ? DeviceOrientation.landscapeLeft
-        : DeviceOrientation.landscapeRight;
-    SystemChrome.setPreferredOrientations([orientation]);
+    // If x is near 0 (phone flat), keep current orientation.
+    if (finalX.abs() > 4) {
+      final orientation = finalX > 0
+          ? DeviceOrientation.landscapeLeft
+          : DeviceOrientation.landscapeRight;
+      SystemChrome.setPreferredOrientations([orientation]);
+    }
 
     setState(() => _awaitingFlip = false);
     _timer.toggle();
@@ -190,7 +207,7 @@ class _FullscreenTimerScreenState extends State<FullscreenTimerScreen>
           DeviceOrientation.landscapeLeft,
           DeviceOrientation.landscapeRight,
         ]);
-        _sampleInitialX();
+        _sampleInitialAccel();
       }
     });
   }
