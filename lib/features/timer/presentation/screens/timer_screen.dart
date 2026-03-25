@@ -506,14 +506,14 @@ class _StartButtonState extends State<_StartButton> {
 
 // ── Motivational quote card ────────────────────────────────────────────────
 const _quotes = [
-  ('"Focus is a superpower."', 'KINETIC MINDSET'),
-  ('"Small steps every day lead to big results."', 'GROWTH HABIT'),
-  ('"You don\'t need motivation, you need discipline."', 'DEEP WORK'),
-  ('"Progress, not perfection."', 'MINDFUL FOCUS'),
-  ('"One session at a time."', 'POMODORO METHOD'),
-  ('"Consistency beats intensity."', 'HIGH ACHIEVER'),
-  ('"Done is better than perfect."', 'EXECUTION MODE'),
-  ('"Protect your focus like it\'s your most valuable asset."', 'DEEP WORK'),
+  ("'Focus is a superpower.'", 'NAVAL RAVIKANT'),
+  ("'The secret of getting ahead is getting started.'", 'MARK TWAIN'),
+  ("'Discipline is choosing what you want most.'", 'ABRAHAM LINCOLN'),
+  ("'Improvement is better than delayed perfection.'", 'MARK TWAIN'),
+  ("'Do only one thing at once.'", 'SAMUEL SMILES'),
+  ("'Consistency trumps intensity.'", 'BRUCE LEE'),
+  ("'Done is better than perfect.'", 'SHERYL SANDBERG'),
+  ("'Your focus determines your reality.'", 'GEORGE LUCAS'),
 ];
 
 class _QuoteCard extends StatefulWidget {

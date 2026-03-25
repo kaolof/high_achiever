@@ -47,6 +47,8 @@ class SettingsScreen extends StatelessWidget {
           const SizedBox(height: 32),
           const _SectionLabel('Sounds'),
           const SizedBox(height: 12),
+          const _VolumeTile(),
+          const SizedBox(height: 12),
           const _SoundTile(
             label: 'Pomodoro sound',
             icon: Icons.timer_outlined,
@@ -574,6 +576,9 @@ class _SoundPickerSheet extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
+      constraints: BoxConstraints(
+        maxHeight: MediaQuery.of(context).size.height * 0.65,
+      ),
       decoration: const BoxDecoration(
         color: AppColors.surfaceContainerLowest,
         borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
@@ -603,61 +608,184 @@ class _SoundPickerSheet extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 16),
-          ...AudioService.sounds.map((s) {
-            final selected = s.file == currentFile;
-            return Padding(
-              padding: const EdgeInsets.only(bottom: 8),
-              child: InkWell(
-                borderRadius: BorderRadius.circular(12),
-                onTap: () {
-                  final timer = context.read<TimerNotifier>();
-                  if (isPomodoro) {
-                    timer.setPomodoroSound(s.file);
-                  } else {
-                    timer.setBreakSound(s.file);
-                  }
-                  Navigator.pop(context);
-                },
-                child: Container(
-                  padding: const EdgeInsets.symmetric(
-                      horizontal: 16, vertical: 14),
-                  decoration: BoxDecoration(
-                    color: selected
-                        ? AppColors.accentLight
-                        : AppColors.background,
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: Row(
-                    children: [
-                      Expanded(
-                        child: Text(
-                          s.label,
-                          style: TextStyle(
-                            color: selected
-                                ? AppColors.accent
-                                : AppColors.textPrimary,
-                            fontSize: 16,
-                            fontWeight: selected
-                                ? FontWeight.w700
-                                : FontWeight.w500,
+          Flexible(
+            child: ListView.separated(
+              itemCount: AudioService.sounds.length,
+              separatorBuilder: (_, __) => const SizedBox(height: 8),
+              itemBuilder: (context, index) {
+                final s = AudioService.sounds[index];
+                final selected = s.file == currentFile;
+                return InkWell(
+                  borderRadius: BorderRadius.circular(12),
+                  onTap: () {
+                    final timer = context.read<TimerNotifier>();
+                    if (isPomodoro) {
+                      timer.setPomodoroSound(s.file);
+                    } else {
+                      timer.setBreakSound(s.file);
+                    }
+                    Navigator.pop(context);
+                  },
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 16, vertical: 14),
+                    decoration: BoxDecoration(
+                      color: selected
+                          ? AppColors.accentLight
+                          : AppColors.background,
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            s.label,
+                            style: TextStyle(
+                              color: selected
+                                  ? AppColors.accent
+                                  : AppColors.textPrimary,
+                              fontSize: 16,
+                              fontWeight: selected
+                                  ? FontWeight.w700
+                                  : FontWeight.w500,
+                            ),
                           ),
                         ),
+                        IconButton(
+                          icon: const Icon(Icons.play_circle_outline),
+                          color: AppColors.accent,
+                          onPressed: () => context
+                              .read<TimerNotifier>()
+                              .previewSound(s.file),
+                        ),
+                        if (selected)
+                          const Icon(Icons.check_rounded,
+                              color: AppColors.accent, size: 20),
+                      ],
+                    ),
+                  ),
+                );
+              },
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _VolumeTile extends StatefulWidget {
+  const _VolumeTile();
+
+  @override
+  State<_VolumeTile> createState() => _VolumeTileState();
+}
+
+class _VolumeTileState extends State<_VolumeTile> {
+  late double _volume;
+
+  @override
+  void initState() {
+    super.initState();
+    _volume = context.read<TimerNotifier>().soundVolume;
+  }
+
+  void _onChanged(double value) {
+    setState(() => _volume = value);
+  }
+
+  void _onChangeEnd(double value) {
+    final timer = context.read<TimerNotifier>();
+    timer.setSoundVolume(value);
+    // Preview the pomodoro sound at the new volume
+    timer.previewSound(timer.pomodoroSound);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final pct = (_volume * 100).round();
+    return Container(
+      padding: const EdgeInsets.fromLTRB(20, 14, 12, 14),
+      decoration: BoxDecoration(
+        color: AppColors.surfaceContainerLowest,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: AppColors.onSecondaryFixed.withValues(alpha: 0.04),
+            blurRadius: 32,
+            offset: Offset.zero,
+          ),
+        ],
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 36,
+            height: 36,
+            decoration: BoxDecoration(
+              color: AppColors.accentLight,
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Icon(
+              _volume == 0
+                  ? Icons.volume_off_rounded
+                  : _volume < 0.5
+                      ? Icons.volume_down_rounded
+                      : Icons.volume_up_rounded,
+              color: AppColors.accent,
+              size: 18,
+            ),
+          ),
+          const SizedBox(width: 16),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    const Text(
+                      'Volume',
+                      style: TextStyle(
+                        color: AppColors.textPrimary,
+                        fontSize: 16,
+                        fontWeight: FontWeight.w600,
                       ),
-                      IconButton(
-                        icon: const Icon(Icons.play_circle_outline),
-                        color: AppColors.accent,
-                        onPressed: () =>
-                            context.read<TimerNotifier>().previewSound(s.file),
+                    ),
+                    Text(
+                      '$pct%',
+                      style: const TextStyle(
+                        color: AppColors.textSecondary,
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
                       ),
-                      if (selected)
-                        const Icon(Icons.check_rounded,
-                            color: AppColors.accent, size: 20),
-                    ],
+                    ),
+                  ],
+                ),
+                SliderTheme(
+                  data: SliderTheme.of(context).copyWith(
+                    trackHeight: 3,
+                    thumbShape:
+                        const RoundSliderThumbShape(enabledThumbRadius: 7),
+                    overlayShape:
+                        const RoundSliderOverlayShape(overlayRadius: 14),
+                    activeTrackColor: AppColors.accent,
+                    inactiveTrackColor:
+                        AppColors.accentLight,
+                    thumbColor: AppColors.accent,
+                    overlayColor: AppColors.accentLight,
+                  ),
+                  child: Slider(
+                    value: _volume,
+                    min: 0,
+                    max: 1,
+                    onChanged: _onChanged,
+                    onChangeEnd: _onChangeEnd,
                   ),
                 ),
-              ),
-            );
-          }),
+              ],
+            ),
+          ),
         ],
       ),
     );

@@ -6,6 +6,8 @@ class AudioService {
     (file: 'beep.wav', label: 'Beep'),
     (file: 'bell.wav', label: 'Bell'),
     (file: 'chime.wav', label: 'Chime'),
+    (file: 'timer_complete.wav', label: 'Complete'),
+    (file: 'bell_ringing.wav', label: 'Bell Ringing'),
   ];
 
   static String labelFor(String file) {
@@ -17,10 +19,10 @@ class AudioService {
 
   final AudioPlayer _player = AudioPlayer();
 
-  Future<void> play(String soundFile) async {
+  Future<void> play(String soundFile, {double volume = 1.0}) async {
     try {
       await _player.stop();
-      await _player.play(AssetSource('sounds/$soundFile'));
+      await _player.play(AssetSource('sounds/$soundFile'), volume: volume);
     } catch (e) {
       debugPrint('AudioService: failed to play $soundFile: $e');
     }
