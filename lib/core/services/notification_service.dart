@@ -1,5 +1,8 @@
+import 'dart:io';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'package:flutter_timezone/flutter_timezone.dart';
 import 'package:timezone/timezone.dart' as tz;
 import 'package:timezone/data/latest.dart' as tz_data;
 
@@ -13,14 +16,24 @@ class NotificationService {
     'chime.wav': ('timer_chime', 'chime'),
     'timer_complete.wav': ('timer_complete', 'timer_complete'),
     'bell_ringing.wav': ('timer_bell_ringing', 'bell_ringing'),
-
   };
+
+  static const _batteryChannel =
+      MethodChannel('com.example.high_achiever/battery');
 
   final FlutterLocalNotificationsPlugin _plugin =
       FlutterLocalNotificationsPlugin();
 
   Future<void> init() async {
     tz_data.initializeTimeZones();
+
+    // Set the local timezone so zonedSchedule fires at the correct local time.
+    try {
+      final String timezoneName = await FlutterTimezone.getLocalTimezone();
+      tz.setLocalLocation(tz.getLocation(timezoneName));
+    } catch (e) {
+      debugPrint('NotificationService: could not set local timezone: $e');
+    }
 
     const androidSettings =
         AndroidInitializationSettings('@mipmap/ic_launcher');
@@ -58,6 +71,22 @@ class NotificationService {
 
     await androidImpl?.requestNotificationsPermission();
     await androidImpl?.requestExactAlarmsPermission();
+
+    // Ask the user to exempt this app from battery optimization so that
+    // exact alarms are not delayed or dropped by the OS.
+    if (Platform.isAndroid) {
+      _requestBatteryOptimizationExemption();
+    }
+  }
+
+  Future<void> _requestBatteryOptimizationExemption() async {
+    try {
+      await _batteryChannel
+          .invokeMethod('requestBatteryOptimizationExemption');
+    } catch (e) {
+      debugPrint(
+          'NotificationService: battery optimization request failed: $e');
+    }
   }
 
   /// Schedule a notification to fire after [remainingSeconds].
