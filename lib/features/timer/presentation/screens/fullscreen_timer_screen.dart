@@ -284,6 +284,20 @@ class _FullscreenTimerScreenState extends State<FullscreenTimerScreen>
                       isRunning: timer.isRunning,
                       onTap: timer.toggle,
                     ),
+                  if (timer.isBreak) ...[
+                    const SizedBox(height: 24),
+                    GestureDetector(
+                      onTap: timer.skipBreak,
+                      child: const Text(
+                        'Skip Break',
+                        style: TextStyle(
+                          color: Color(0xFF4A5450),
+                          fontSize: 16,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ),
+                  ],
                 ],
               ),
             ),
