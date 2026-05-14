@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../../core/services/audio_service.dart';
+import '../../../core/services/notification_service.dart';
 
 enum TimerPhase { pomodoro, breakTime }
 
@@ -20,6 +21,7 @@ class TimerNotifier extends ChangeNotifier {
   static const String _keyIsBreak = 'is_break';
   static const String _keyPomodoroSound = 'pomodoro_sound';
   static const String _keyBreakSound = 'break_sound';
+  static const String _keySoundVolume = 'sound_volume';
   static const String defaultSound = 'beep.wav';
 
   int _pomodoroDuration = defaultPomodoroDuration;
@@ -33,6 +35,7 @@ class TimerNotifier extends ChangeNotifier {
   bool _justCompleted = false;
   String _pomodoroSound = defaultSound;
   String _breakSound = defaultSound;
+  double _soundVolume = 1.0;
 
   int get minutes => _remainingSeconds ~/ 60;
   int get seconds => _remainingSeconds % 60;
@@ -45,14 +48,16 @@ class TimerNotifier extends ChangeNotifier {
   int get breakDuration => _breakDuration;
   String get pomodoroSound => _pomodoroSound;
   String get breakSound => _breakSound;
+  double get soundVolume => _soundVolume;
 
   /// true for 1 second when a phase ends (to animate the UI)
   bool get justCompleted => _justCompleted;
 
   final SharedPreferences _prefs;
   final AudioService _audio;
+  final NotificationService _notifications;
 
-  TimerNotifier(this._prefs, this._audio) {
+  TimerNotifier(this._prefs, this._audio, this._notifications) {
     _loadFromPrefs();
   }
 
@@ -70,6 +75,7 @@ class TimerNotifier extends ChangeNotifier {
           _phase == TimerPhase.pomodoro ? _pomodoroDuration : _breakDuration;
       _pomodoroSound = _prefs.getString(_keyPomodoroSound) ?? defaultSound;
       _breakSound = _prefs.getString(_keyBreakSound) ?? defaultSound;
+      _soundVolume = _prefs.getDouble(_keySoundVolume) ?? 1.0;
 
       final today = _todayString();
       final savedDate = _prefs.getString(_keyLastDate) ?? '';
@@ -107,7 +113,7 @@ class TimerNotifier extends ChangeNotifier {
       _prefs.remove(_keyTimerStartEpoch);
       _timer?.cancel();
       _isRunning = false;
-      _audio.play(_phase == TimerPhase.pomodoro ? _pomodoroSound : _breakSound);
+      _audio.play(_phase == TimerPhase.pomodoro ? _pomodoroSound : _breakSound, volume: _soundVolume);
       if (_phase == TimerPhase.pomodoro) {
         _completedToday++;
         _saveToPrefs();
@@ -131,6 +137,12 @@ class TimerNotifier extends ChangeNotifier {
       _remainingSeconds = newRemaining;
       _prefs.setInt(_keyTimerStartEpoch, DateTime.now().millisecondsSinceEpoch);
       _prefs.setInt(_keyRemainingAtStart, _remainingSeconds);
+      // Reschedule notification with updated remaining time.
+      _notifications.scheduleCompletion(
+        remainingSeconds: _remainingSeconds,
+        soundFile: _phase == TimerPhase.pomodoro ? _pomodoroSound : _breakSound,
+        isPomodoro: _phase == TimerPhase.pomodoro,
+      );
       if (!_isRunning) {
         _isRunning = true;
         _startTicker();
@@ -175,7 +187,13 @@ class TimerNotifier extends ChangeNotifier {
     await _prefs.setString(_keyBreakSound, soundFile);
   }
 
-  void previewSound(String soundFile) => _audio.play(soundFile);
+  void previewSound(String soundFile) => _audio.play(soundFile, volume: _soundVolume);
+
+  Future<void> setSoundVolume(double volume) async {
+    _soundVolume = volume;
+    notifyListeners();
+    await _prefs.setDouble(_keySoundVolume, volume);
+  }
 
   Future<void> setDailyGoal(int goal) async {
     _dailyGoal = goal;
@@ -209,6 +227,11 @@ class TimerNotifier extends ChangeNotifier {
     _isRunning = true;
     _prefs.setInt(_keyTimerStartEpoch, DateTime.now().millisecondsSinceEpoch);
     _prefs.setInt(_keyRemainingAtStart, _remainingSeconds);
+    _notifications.scheduleCompletion(
+      remainingSeconds: _remainingSeconds,
+      soundFile: _phase == TimerPhase.pomodoro ? _pomodoroSound : _breakSound,
+      isPomodoro: _phase == TimerPhase.pomodoro,
+    );
     notifyListeners();
     _startTicker();
   }
@@ -229,7 +252,8 @@ class TimerNotifier extends ChangeNotifier {
     _timer?.cancel();
     _isRunning = false;
     _prefs.remove(_keyTimerStartEpoch);
-    _audio.play(_phase == TimerPhase.pomodoro ? _pomodoroSound : _breakSound);
+    _notifications.cancel();
+    _audio.play(_phase == TimerPhase.pomodoro ? _pomodoroSound : _breakSound, volume: _soundVolume);
 
     if (_phase == TimerPhase.pomodoro) {
       _completedToday++;
@@ -256,6 +280,7 @@ class TimerNotifier extends ChangeNotifier {
     _timer?.cancel();
     _isRunning = false;
     _prefs.remove(_keyTimerStartEpoch);
+    _notifications.cancel();
     notifyListeners();
   }
 
@@ -266,6 +291,7 @@ class TimerNotifier extends ChangeNotifier {
     _isRunning = false;
     _switchToPomodoro();
     _prefs.remove(_keyTimerStartEpoch);
+    _notifications.cancel();
     notifyListeners();
   }
 
@@ -275,6 +301,7 @@ class TimerNotifier extends ChangeNotifier {
     _switchToPomodoro();
     _prefs.remove(_keyTimerStartEpoch);
     _prefs.setBool(_keyIsBreak, false);
+    _notifications.cancel();
     notifyListeners();
   }
 
@@ -285,6 +312,7 @@ class TimerNotifier extends ChangeNotifier {
     _switchToPomodoro();
     _prefs.remove(_keyTimerStartEpoch);
     _prefs.setBool(_keyIsBreak, false);
+    _notifications.cancel();
     await _saveToPrefs();
     notifyListeners();
   }

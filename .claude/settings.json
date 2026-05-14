@@ -1,7 +1,8 @@
 {
   "permissions": {
     "allow": [
-      "Read(//c/Users/Kao/Downloads/**)"
+      "Read(//c/Users/Kao/Downloads/**)",
+      "Bash(flutter clean:*)"
     ]
   }
 }
