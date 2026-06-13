@@ -200,13 +200,11 @@ class _FullscreenTimerScreenState extends State<FullscreenTimerScreen>
     setState(() => _awaitingFlip = false);
     _timer.toggle();
 
-    // Restore both orientations after the rotation to allow the next flip.
+    // Keep the new orientation locked so the OS auto-rotate setting doesn't
+    // interfere and flip it back. Just sample the new accelerometer baseline
+    // after the physical rotation settles.
     Future.delayed(const Duration(milliseconds: 400), () {
       if (mounted) {
-        SystemChrome.setPreferredOrientations([
-          DeviceOrientation.landscapeLeft,
-          DeviceOrientation.landscapeRight,
-        ]);
         _sampleInitialAccel();
       }
     });
@@ -228,9 +226,19 @@ class _FullscreenTimerScreenState extends State<FullscreenTimerScreen>
     super.dispose();
   }
 
+  void _setFlipMode(bool enabled) {
+    _settings.flipMode = enabled;
+    if (!enabled) {
+      _accelSub?.cancel();
+      _accelSub = null;
+      if (_awaitingFlip) setState(() => _awaitingFlip = false);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final timer = context.watch<TimerNotifier>();
+    final flipEnabled = context.watch<AppSettingsNotifier>().flipMode;
     final timeText =
         '${timer.minutes.toString().padLeft(2, '0')}:${timer.seconds.toString().padLeft(2, '0')}';
     final phaseLabel = timer.isBreak ? 'BREAK' : 'FOCUS';
@@ -240,6 +248,14 @@ class _FullscreenTimerScreenState extends State<FullscreenTimerScreen>
       body: SafeArea(
         child: Stack(
           children: [
+            Positioned(
+              top: 16,
+              left: 20,
+              child: _FlipModeToggle(
+                enabled: flipEnabled,
+                onChanged: _setFlipMode,
+              ),
+            ),
             Positioned(
               top: 16,
               right: 20,
@@ -277,7 +293,7 @@ class _FullscreenTimerScreenState extends State<FullscreenTimerScreen>
                     ),
                   ),
                   const SizedBox(height: 28),
-                  if (_awaitingFlip)
+                  if (_awaitingFlip && flipEnabled)
                     _FlipPrompt(isBreak: timer.isBreak)
                   else
                     _PlayPauseButton(
@@ -299,6 +315,56 @@ class _FullscreenTimerScreenState extends State<FullscreenTimerScreen>
                     ),
                   ],
                 ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Flip mode toggle (in-fullscreen shortcut to enable/disable flip mode)
+// ---------------------------------------------------------------------------
+
+class _FlipModeToggle extends StatelessWidget {
+  final bool enabled;
+  final ValueChanged<bool> onChanged;
+
+  const _FlipModeToggle({required this.enabled, required this.onChanged});
+
+  @override
+  Widget build(BuildContext context) {
+    final color = enabled ? AppColors.accent : const Color(0xFF4A5450);
+    return GestureDetector(
+      onTap: () => onChanged(!enabled),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+        decoration: BoxDecoration(
+          color: enabled
+              ? AppColors.accent.withValues(alpha: 0.12)
+              : const Color(0xFF4A5450).withValues(alpha: 0.12),
+          borderRadius: BorderRadius.circular(40),
+          border: Border.all(color: color.withValues(alpha: 0.4), width: 1.5),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              enabled
+                  ? Icons.screen_rotation_rounded
+                  : Icons.screen_lock_rotation_rounded,
+              color: color,
+              size: 18,
+            ),
+            const SizedBox(width: 8),
+            Text(
+              enabled ? 'Flip On' : 'Flip Off',
+              style: TextStyle(
+                color: color,
+                fontSize: 14,
+                fontWeight: FontWeight.w600,
               ),
             ),
           ],
