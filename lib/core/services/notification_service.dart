@@ -7,6 +7,9 @@ import 'package:timezone/data/latest.dart' as tz_data;
 class NotificationService {
   static const int _timerId = 1;
 
+  // Silent, low-importance channel for the ongoing live countdown notification.
+  static const String _countdownChannelId = 'timer_countdown';
+
   // Maps sound file → (channelId, rawResourceName)
   static const Map<String, (String, String)> _soundChannels = {
     'beep.wav': ('timer_beep', 'beep'),
@@ -64,6 +67,19 @@ class NotificationService {
       );
     }
 
+    // Silent channel for the live countdown (no sound, no vibration — it only
+    // displays the ticking time, so it must not buzz while it's shown).
+    await androidImpl?.createNotificationChannel(
+      const AndroidNotificationChannel(
+        _countdownChannelId,
+        'Timer Countdown',
+        description: 'Shows the running timer and remaining time',
+        importance: Importance.low,
+        playSound: false,
+        enableVibration: false,
+      ),
+    );
+
     // Required on Android 13+ to show any notification at all.
     await androidImpl?.requestNotificationsPermission();
   }
@@ -116,6 +132,45 @@ class NotificationService {
     if (!scheduled) {
       await _schedule(scheduledTime, title, body, details,
           AndroidScheduleMode.inexactAllowWhileIdle);
+    }
+
+    // Show the live countdown now. It shares [_timerId] with the scheduled
+    // completion above, so when the timer ends the completion notification
+    // replaces this one automatically. Android renders the countdown natively
+    // from [when], so it keeps ticking even if the app is closed.
+    await _showCountdown(scheduledTime, isPomodoro);
+  }
+
+  /// Posts an ongoing notification whose chronometer counts down to
+  /// [scheduledTime], shown while the timer runs (Android only).
+  Future<void> _showCountdown(
+      tz.TZDateTime scheduledTime, bool isPomodoro) async {
+    try {
+      await _plugin.show(
+        _timerId,
+        isPomodoro ? 'Focusing 🍅' : 'On a break ☕',
+        isPomodoro ? 'Time left in this pomodoro' : 'Time left in your break',
+        NotificationDetails(
+          android: AndroidNotificationDetails(
+            _countdownChannelId,
+            'Timer Countdown',
+            channelDescription: 'Shows the running timer and remaining time',
+            importance: Importance.low,
+            priority: Priority.low,
+            playSound: false,
+            enableVibration: false,
+            ongoing: true,
+            autoCancel: false,
+            onlyAlertOnce: true,
+            showWhen: true,
+            when: scheduledTime.millisecondsSinceEpoch,
+            usesChronometer: true,
+            chronometerCountDown: true,
+          ),
+        ),
+      );
+    } catch (e) {
+      debugPrint('NotificationService: failed to show countdown: $e');
     }
   }
 
