@@ -1,5 +1,6 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'package:flutter_timezone/flutter_timezone.dart';
 import 'package:timezone/timezone.dart' as tz;
 import 'package:timezone/data/latest.dart' as tz_data;
 
@@ -21,6 +22,13 @@ class NotificationService {
 
   Future<void> init() async {
     tz_data.initializeTimeZones();
+    // Without this tz.local defaults to UTC, which can skew scheduled times.
+    try {
+      final localZone = await FlutterTimezone.getLocalTimezone();
+      tz.setLocalLocation(tz.getLocation(localZone.identifier));
+    } catch (e) {
+      debugPrint('NotificationService: failed to resolve local timezone: $e');
+    }
 
     const androidSettings =
         AndroidInitializationSettings('@mipmap/ic_launcher');
@@ -56,8 +64,8 @@ class NotificationService {
       );
     }
 
+    // Required on Android 13+ to show any notification at all.
     await androidImpl?.requestNotificationsPermission();
-    await androidImpl?.requestExactAlarmsPermission();
   }
 
   /// Schedule a notification to fire after [remainingSeconds].
@@ -76,36 +84,65 @@ class NotificationService {
     final scheduledTime =
         tz.TZDateTime.now(tz.local).add(Duration(seconds: remainingSeconds));
 
+    final details = NotificationDetails(
+      android: AndroidNotificationDetails(
+        channelId,
+        'Timer Alerts',
+        channelDescription: 'Pomodoro timer completion sound',
+        importance: Importance.high,
+        priority: Priority.high,
+        sound: RawResourceAndroidNotificationSound(rawName),
+        playSound: true,
+        enableVibration: true,
+      ),
+      iOS: DarwinNotificationDetails(
+        sound: soundFile,
+        presentAlert: true,
+        presentSound: true,
+        presentBadge: false,
+      ),
+    );
+
+    final title = isPomodoro ? 'Pomodoro complete! 🍅' : 'Break over! ☕';
+    final body = isPomodoro ? 'Time for a break.' : 'Time to focus!';
+
+    // alarmClock (AlarmManager.setAlarmClock) fires at the exact time even under
+    // Doze / battery saver — the most reliable mode for a timer. The plugin still
+    // requires exact-alarm capability for this mode and throws if it's missing,
+    // so if that happens we fall back to an inexact alarm: it may be delayed by
+    // Doze, but a late alert beats a silent one.
+    final scheduled = await _schedule(
+        scheduledTime, title, body, details, AndroidScheduleMode.alarmClock);
+    if (!scheduled) {
+      await _schedule(scheduledTime, title, body, details,
+          AndroidScheduleMode.inexactAllowWhileIdle);
+    }
+  }
+
+  /// Returns true if scheduling succeeded.
+  Future<bool> _schedule(
+    tz.TZDateTime scheduledTime,
+    String title,
+    String body,
+    NotificationDetails details,
+    AndroidScheduleMode mode,
+  ) async {
     try {
       await _plugin.zonedSchedule(
         _timerId,
-        isPomodoro ? 'Pomodoro complete! 🍅' : 'Break over! ☕',
-        isPomodoro ? 'Time for a break.' : 'Time to focus!',
+        title,
+        body,
         scheduledTime,
-        NotificationDetails(
-          android: AndroidNotificationDetails(
-            channelId,
-            'Timer Alerts',
-            channelDescription: 'Pomodoro timer completion sound',
-            importance: Importance.high,
-            priority: Priority.high,
-            sound: RawResourceAndroidNotificationSound(rawName),
-            playSound: true,
-            enableVibration: true,
-          ),
-          iOS: DarwinNotificationDetails(
-            sound: soundFile,
-            presentAlert: true,
-            presentSound: true,
-            presentBadge: false,
-          ),
-        ),
-        androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
+        details,
+        androidScheduleMode: mode,
         uiLocalNotificationDateInterpretation:
             UILocalNotificationDateInterpretation.absoluteTime,
       );
+      debugPrint('NotificationService: scheduled at $scheduledTime (mode=$mode)');
+      return true;
     } catch (e) {
-      debugPrint('NotificationService: failed to schedule: $e');
+      debugPrint('NotificationService: schedule failed (mode=$mode): $e');
+      return false;
     }
   }
 

@@ -1,12 +1,12 @@
 import 'dart:async';
-import 'package:flutter/foundation.dart';
+import 'package:flutter/widgets.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../../core/services/audio_service.dart';
 import '../../../core/services/notification_service.dart';
 
 enum TimerPhase { pomodoro, breakTime }
 
-class TimerNotifier extends ChangeNotifier {
+class TimerNotifier extends ChangeNotifier with WidgetsBindingObserver {
   static const int defaultPomodoroDuration = 25 * 60;
   static const int defaultBreakDuration = 5 * 60;
   static const String defaultTaskName = 'Design Sprint';
@@ -36,6 +36,7 @@ class TimerNotifier extends ChangeNotifier {
   String _pomodoroSound = defaultSound;
   String _breakSound = defaultSound;
   double _soundVolume = 1.0;
+  bool _isForeground = true;
 
   int get minutes => _remainingSeconds ~/ 60;
   int get seconds => _remainingSeconds % 60;
@@ -58,7 +59,13 @@ class TimerNotifier extends ChangeNotifier {
   final NotificationService _notifications;
 
   TimerNotifier(this._prefs, this._audio, this._notifications) {
+    WidgetsBinding.instance.addObserver(this);
     _loadFromPrefs();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    _isForeground = state == AppLifecycleState.resumed;
   }
 
   void _loadFromPrefs() {
@@ -252,8 +259,14 @@ class TimerNotifier extends ChangeNotifier {
     _timer?.cancel();
     _isRunning = false;
     _prefs.remove(_keyTimerStartEpoch);
-    _notifications.cancel();
-    _audio.play(_phase == TimerPhase.pomodoro ? _pomodoroSound : _breakSound, volume: _soundVolume);
+    // In the foreground, play the in-app sound and cancel the scheduled
+    // notification to avoid a duplicate alert. In the background, leave the
+    // scheduled notification alone — it is the only thing that can make sound,
+    // since audioplayers does not play reliably when the app isn't visible.
+    if (_isForeground) {
+      _notifications.cancel();
+      _audio.play(_phase == TimerPhase.pomodoro ? _pomodoroSound : _breakSound, volume: _soundVolume);
+    }
 
     if (_phase == TimerPhase.pomodoro) {
       _completedToday++;
@@ -324,6 +337,7 @@ class TimerNotifier extends ChangeNotifier {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _timer?.cancel();
     super.dispose();
   }
