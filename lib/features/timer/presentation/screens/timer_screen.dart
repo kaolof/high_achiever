@@ -16,23 +16,16 @@ class TimerScreen extends StatefulWidget {
   State<TimerScreen> createState() => _TimerScreenState();
 }
 
-class _TimerScreenState extends State<TimerScreen>
-    with WidgetsBindingObserver {
+class _TimerScreenState extends State<TimerScreen> {
   late final TimerNotifier _timer;
 
   @override
   void initState() {
     super.initState();
     _timer = context.read<TimerNotifier>();
-    WidgetsBinding.instance.addObserver(this);
+    // Lifecycle reconciliation is handled by TimerNotifier itself, which is a
+    // WidgetsBindingObserver, so this screen no longer needs to observe it.
     _timer.addListener(_onTimerChanged);
-  }
-
-  @override
-  void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.resumed) {
-      _timer.reconcileAfterBackground();
-    }
   }
 
   Future<void> _confirmResetSession(BuildContext context) async {
@@ -104,7 +97,6 @@ class _TimerScreenState extends State<TimerScreen>
 
   @override
   void dispose() {
-    WidgetsBinding.instance.removeObserver(this);
     _timer.removeListener(_onTimerChanged);
     super.dispose();
   }

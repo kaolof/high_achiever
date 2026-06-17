@@ -145,6 +145,10 @@ class NotificationService {
   /// [scheduledTime], shown while the timer runs (Android only).
   Future<void> _showCountdown(
       tz.TZDateTime scheduledTime, bool isPomodoro) async {
+    // The chronometer (usesChronometer/chronometerCountDown) is Android-only.
+    // On iOS this show() would post an immediate banner with the default sound
+    // every time the timer starts, so skip it on non-Android platforms.
+    if (defaultTargetPlatform != TargetPlatform.android) return;
     try {
       await _plugin.show(
         _timerId,

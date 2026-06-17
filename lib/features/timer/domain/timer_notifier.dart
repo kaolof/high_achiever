@@ -65,7 +65,16 @@ class TimerNotifier extends ChangeNotifier with WidgetsBindingObserver {
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    _isForeground = state == AppLifecycleState.resumed;
+    final wasBackground = !_isForeground;
+    // 'inactive'/'hidden' are transient states where the app is still visible
+    // (notification shade, app switcher, permission dialog); only 'paused' and
+    // 'detached' are real background. Treating only those as background avoids
+    // skipping the in-app sound during a brief interruption.
+    _isForeground = state != AppLifecycleState.paused &&
+        state != AppLifecycleState.detached;
+    if (_isForeground && wasBackground) {
+      reconcileAfterBackground();
+    }
   }
 
   void _loadFromPrefs() {
@@ -117,29 +126,7 @@ class TimerNotifier extends ChangeNotifier with WidgetsBindingObserver {
     final newRemaining = remainingAtStart - elapsedSeconds;
 
     if (newRemaining <= 0) {
-      _prefs.remove(_keyTimerStartEpoch);
-      _timer?.cancel();
-      _isRunning = false;
-      _audio.play(_phase == TimerPhase.pomodoro ? _pomodoroSound : _breakSound, volume: _soundVolume);
-      if (_phase == TimerPhase.pomodoro) {
-        _completedToday++;
-        _saveToPrefs();
-        _justCompleted = true;
-        _switchToBreak();
-        notifyListeners();
-        Timer(const Duration(seconds: 1), () {
-          _justCompleted = false;
-          notifyListeners();
-        });
-      } else {
-        _justCompleted = true;
-        _switchToPomodoro();
-        notifyListeners();
-        Timer(const Duration(seconds: 1), () {
-          _justCompleted = false;
-          notifyListeners();
-        });
-      }
+      _finishPhase();
     } else {
       _remainingSeconds = newRemaining;
       _prefs.setInt(_keyTimerStartEpoch, DateTime.now().millisecondsSinceEpoch);
@@ -255,38 +242,36 @@ class TimerNotifier extends ChangeNotifier with WidgetsBindingObserver {
     });
   }
 
-  Future<void> _onPhaseComplete() async {
+  Future<void> _onPhaseComplete() => _finishPhase();
+
+  /// Single completion path shared by the foreground ticker and the
+  /// background reconcile, so both behave identically.
+  Future<void> _finishPhase() async {
     _timer?.cancel();
     _isRunning = false;
     _prefs.remove(_keyTimerStartEpoch);
-    // In the foreground, play the in-app sound and cancel the scheduled
-    // notification to avoid a duplicate alert. In the background, leave the
-    // scheduled notification alone — it is the only thing that can make sound,
-    // since audioplayers does not play reliably when the app isn't visible.
+    // The scheduled notification has already sounded if we completed in the
+    // background; cancel it either way to clear the tray entry. Only play the
+    // in-app sound when visible, to avoid duplicating the notification's sound
+    // (audioplayers does not play reliably when the app isn't visible).
+    _notifications.cancel();
     if (_isForeground) {
-      _notifications.cancel();
       _audio.play(_phase == TimerPhase.pomodoro ? _pomodoroSound : _breakSound, volume: _soundVolume);
     }
 
     if (_phase == TimerPhase.pomodoro) {
       _completedToday++;
       await _saveToPrefs();
-      _justCompleted = true;
       _switchToBreak();
-      notifyListeners();
-      Timer(const Duration(seconds: 1), () {
-        _justCompleted = false;
-        notifyListeners();
-      });
     } else {
-      _justCompleted = true;
       _switchToPomodoro();
-      notifyListeners();
-      Timer(const Duration(seconds: 1), () {
-        _justCompleted = false;
-        notifyListeners();
-      });
     }
+    _justCompleted = true;
+    notifyListeners();
+    Timer(const Duration(seconds: 1), () {
+      _justCompleted = false;
+      notifyListeners();
+    });
   }
 
   void _pause() {
