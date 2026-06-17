@@ -1,5 +1,10 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
-    <!-- Notifications -->
+    <!-- Notifications. flutter_local_notifications requires exact-alarm
+         capability even for alarmClock mode (it calls canScheduleExactAlarms()
+         before setAlarmClock and throws otherwise). USE_EXACT_ALARM grants this
+         automatically on Android 13+ without a user prompt; SCHEDULE_EXACT_ALARM
+         covers Android 12. Exact timing is the core feature of a Pomodoro timer,
+         which is the permitted use case for USE_EXACT_ALARM on the Play Store. -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
     <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM"/>
     <uses-permission android:name="android.permission.USE_EXACT_ALARM"/>
