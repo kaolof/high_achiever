@@ -17,7 +17,6 @@ class NotificationService {
     'chime.wav': ('timer_chime', 'chime'),
     'timer_complete.wav': ('timer_complete', 'timer_complete'),
     'bell_ringing.wav': ('timer_bell_ringing', 'bell_ringing'),
-
   };
 
   final FlutterLocalNotificationsPlugin _plugin =
@@ -33,25 +32,27 @@ class NotificationService {
       debugPrint('NotificationService: failed to resolve local timezone: $e');
     }
 
-    const androidSettings =
-        AndroidInitializationSettings('@mipmap/ic_launcher');
+    const androidSettings = AndroidInitializationSettings(
+      '@mipmap/ic_launcher',
+    );
+    // Permissions are requested later, during onboarding, so we can prime the
+    // user with context first instead of firing the system prompt cold on the
+    // very first launch. See [requestPermissions].
     const iosSettings = DarwinInitializationSettings(
-      requestAlertPermission: true,
+      requestAlertPermission: false,
       requestBadgePermission: false,
-      requestSoundPermission: true,
+      requestSoundPermission: false,
     );
     await _plugin.initialize(
-      const InitializationSettings(
-        android: androidSettings,
-        iOS: iosSettings,
-      ),
+      const InitializationSettings(android: androidSettings, iOS: iosSettings),
     );
 
     // Create one Android notification channel per sound so the OS knows
     // which audio file to play even when the app is not running.
     final androidImpl = _plugin
         .resolvePlatformSpecificImplementation<
-            AndroidFlutterLocalNotificationsPlugin>();
+          AndroidFlutterLocalNotificationsPlugin
+        >();
     for (final entry in _soundChannels.entries) {
       final (channelId, rawName) = entry.value;
       await androidImpl?.createNotificationChannel(
@@ -79,9 +80,36 @@ class NotificationService {
         enableVibration: false,
       ),
     );
+  }
 
-    // Required on Android 13+ to show any notification at all.
-    await androidImpl?.requestNotificationsPermission();
+  /// Requests notification permission from the OS. Call this *after* showing the
+  /// user why notifications matter (the onboarding priming slide), not at launch.
+  ///
+  /// Required on Android 13+ to show any notification at all. Returns true when
+  /// permission is granted (or already was); false when explicitly denied.
+  Future<bool> requestPermissions() async {
+    final androidImpl = _plugin
+        .resolvePlatformSpecificImplementation<
+          AndroidFlutterLocalNotificationsPlugin
+        >();
+    if (androidImpl != null) {
+      return await androidImpl.requestNotificationsPermission() ?? false;
+    }
+
+    final iosImpl = _plugin
+        .resolvePlatformSpecificImplementation<
+          IOSFlutterLocalNotificationsPlugin
+        >();
+    if (iosImpl != null) {
+      return await iosImpl.requestPermissions(
+            alert: true,
+            badge: false,
+            sound: true,
+          ) ??
+          false;
+    }
+
+    return true;
   }
 
   /// Schedule a notification to fire after [remainingSeconds].
@@ -97,8 +125,9 @@ class NotificationService {
     final (channelId, rawName) =
         _soundChannels[soundFile] ?? _soundChannels['beep.wav']!;
 
-    final scheduledTime =
-        tz.TZDateTime.now(tz.local).add(Duration(seconds: remainingSeconds));
+    final scheduledTime = tz.TZDateTime.now(
+      tz.local,
+    ).add(Duration(seconds: remainingSeconds));
 
     final details = NotificationDetails(
       android: AndroidNotificationDetails(
@@ -128,10 +157,20 @@ class NotificationService {
     // so if that happens we fall back to an inexact alarm: it may be delayed by
     // Doze, but a late alert beats a silent one.
     final scheduled = await _schedule(
-        scheduledTime, title, body, details, AndroidScheduleMode.alarmClock);
+      scheduledTime,
+      title,
+      body,
+      details,
+      AndroidScheduleMode.alarmClock,
+    );
     if (!scheduled) {
-      await _schedule(scheduledTime, title, body, details,
-          AndroidScheduleMode.inexactAllowWhileIdle);
+      await _schedule(
+        scheduledTime,
+        title,
+        body,
+        details,
+        AndroidScheduleMode.inexactAllowWhileIdle,
+      );
     }
 
     // Show the live countdown now. It shares [_timerId] with the scheduled
@@ -144,7 +183,9 @@ class NotificationService {
   /// Posts an ongoing notification whose chronometer counts down to
   /// [scheduledTime], shown while the timer runs (Android only).
   Future<void> _showCountdown(
-      tz.TZDateTime scheduledTime, bool isPomodoro) async {
+    tz.TZDateTime scheduledTime,
+    bool isPomodoro,
+  ) async {
     try {
       await _plugin.show(
         _timerId,
@@ -193,7 +234,9 @@ class NotificationService {
         uiLocalNotificationDateInterpretation:
             UILocalNotificationDateInterpretation.absoluteTime,
       );
-      debugPrint('NotificationService: scheduled at $scheduledTime (mode=$mode)');
+      debugPrint(
+        'NotificationService: scheduled at $scheduledTime (mode=$mode)',
+      );
       return true;
     } catch (e) {
       debugPrint('NotificationService: schedule failed (mode=$mode): $e');

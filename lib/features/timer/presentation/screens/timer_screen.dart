@@ -16,8 +16,7 @@ class TimerScreen extends StatefulWidget {
   State<TimerScreen> createState() => _TimerScreenState();
 }
 
-class _TimerScreenState extends State<TimerScreen>
-    with WidgetsBindingObserver {
+class _TimerScreenState extends State<TimerScreen> with WidgetsBindingObserver {
   late final TimerNotifier _timer;
 
   @override
@@ -56,14 +55,17 @@ class _TimerScreenState extends State<TimerScreen>
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Cancel',
-                style: TextStyle(color: AppColors.textSecondary)),
+            child: const Text(
+              'Cancel',
+              style: TextStyle(color: AppColors.textSecondary),
+            ),
           ),
           TextButton(
             onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('Reset',
-                style: TextStyle(
-                    color: Colors.red, fontWeight: FontWeight.w700)),
+            child: const Text(
+              'Reset',
+              style: TextStyle(color: Colors.red, fontWeight: FontWeight.w700),
+            ),
           ),
         ],
       ),
@@ -94,8 +96,9 @@ class _TimerScreenState extends State<TimerScreen>
           ),
           backgroundColor: AppColors.primaryContainer,
           behavior: SnackBarBehavior.floating,
-          shape:
-              RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
           duration: const Duration(seconds: 2),
         ),
       );
@@ -137,8 +140,9 @@ class _TimerScreenState extends State<TimerScreen>
         actions: [
           PopupMenuButton<String>(
             icon: const Icon(Icons.more_vert, color: AppColors.textSecondary),
-            shape:
-                RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(16),
+            ),
             color: AppColors.surfaceContainerLowest,
             onSelected: (value) {
               if (value == 'settings') {
@@ -170,8 +174,11 @@ class _TimerScreenState extends State<TimerScreen>
                 value: 'settings',
                 child: Row(
                   children: [
-                    Icon(Icons.settings_rounded,
-                        color: AppColors.textPrimary, size: 20),
+                    Icon(
+                      Icons.settings_rounded,
+                      color: AppColors.textPrimary,
+                      size: 20,
+                    ),
                     SizedBox(width: 12),
                     Text(
                       'Settings',
@@ -187,8 +194,11 @@ class _TimerScreenState extends State<TimerScreen>
                 value: 'set_goal',
                 child: Row(
                   children: [
-                    Icon(Icons.flag_rounded,
-                        color: AppColors.textPrimary, size: 20),
+                    Icon(
+                      Icons.flag_rounded,
+                      color: AppColors.textPrimary,
+                      size: 20,
+                    ),
                     SizedBox(width: 12),
                     Text(
                       'Set daily goal',
@@ -204,8 +214,11 @@ class _TimerScreenState extends State<TimerScreen>
                 value: 'reset_session',
                 child: Row(
                   children: [
-                    Icon(Icons.restart_alt_rounded,
-                        color: Colors.red, size: 20),
+                    Icon(
+                      Icons.restart_alt_rounded,
+                      color: Colors.red,
+                      size: 20,
+                    ),
                     SizedBox(width: 12),
                     Text(
                       'Reset session',
@@ -223,8 +236,11 @@ class _TimerScreenState extends State<TimerScreen>
                 child: Consumer<AppSettingsNotifier>(
                   builder: (ctx, settings, _) => Row(
                     children: [
-                      const Icon(Icons.military_tech_rounded,
-                          color: AppColors.textPrimary, size: 20),
+                      const Icon(
+                        Icons.military_tech_rounded,
+                        color: AppColors.textPrimary,
+                        size: 20,
+                      ),
                       const SizedBox(width: 12),
                       const Expanded(
                         child: Text(
@@ -302,10 +318,8 @@ class _TimerScreenState extends State<TimerScreen>
             // ── Progress bar ───────────────────────────────────────────────
             Selector<TimerNotifier, (int, int)>(
               selector: (_, t) => (t.completedToday, t.dailyGoal),
-              builder: (_, stats, __) => _ProgressBar(
-                completed: stats.$1,
-                total: stats.$2,
-              ),
+              builder: (_, stats, __) =>
+                  _ProgressBar(completed: stats.$1, total: stats.$2),
             ),
             const SizedBox(height: 20),
             // ── Motivational quote ─────────────────────────────────────────
@@ -400,8 +414,7 @@ class _ProgressBar extends StatelessWidget {
             value: ratio,
             minHeight: 8,
             backgroundColor: AppColors.surfaceContainerLow,
-            valueColor:
-                const AlwaysStoppedAnimation<Color>(AppColors.primary),
+            valueColor: const AlwaysStoppedAnimation<Color>(AppColors.primary),
           ),
         ),
       ],
@@ -569,11 +582,7 @@ class _QuoteCardState extends State<_QuoteCard> {
           const SizedBox(height: 16),
           Row(
             children: [
-              Container(
-                width: 28,
-                height: 1.5,
-                color: AppColors.textSecondary,
-              ),
+              Container(width: 28, height: 1.5, color: AppColors.textSecondary),
               const SizedBox(width: 10),
               Text(
                 _entry.source,

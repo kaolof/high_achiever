@@ -12,8 +12,10 @@ class AudioService {
 
   static String labelFor(String file) {
     return sounds
-        .firstWhere((s) => s.file == file,
-            orElse: () => (file: file, label: file))
+        .firstWhere(
+          (s) => s.file == file,
+          orElse: () => (file: file, label: file),
+        )
         .label;
   }
 

@@ -12,11 +12,7 @@ class FichasScreen extends StatelessWidget {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(
-              Icons.more_vert,
-              size: 64,
-              color: AppColors.secondary,
-            ),
+            Icon(Icons.more_vert, size: 64, color: AppColors.secondary),
             const SizedBox(height: 16),
             Text(
               'Token system',
@@ -30,10 +26,7 @@ class FichasScreen extends StatelessWidget {
             const SizedBox(height: 8),
             Text(
               'Coming soon',
-              style: TextStyle(
-                fontSize: 14,
-                color: AppColors.secondary,
-              ),
+              style: TextStyle(fontSize: 14, color: AppColors.secondary),
             ),
           ],
         ),

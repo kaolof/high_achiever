@@ -4,18 +4,26 @@ class AppColors {
   AppColors._();
 
   // Surface hierarchy — "stack of fine paper"
-  static const Color surface = Color(0xFFF8FAF9);              // Base background
-  static const Color surfaceContainerLow = Color(0xFFF2F4F3);  // Layer 1: grouping
-  static const Color surfaceContainerLowest = Color(0xFFFFFFFF); // Layer 2: cards
+  static const Color surface = Color(0xFFF8FAF9); // Base background
+  static const Color surfaceContainerLow = Color(
+    0xFFF2F4F3,
+  ); // Layer 1: grouping
+  static const Color surfaceContainerLowest = Color(
+    0xFFFFFFFF,
+  ); // Layer 2: cards
 
   // Primary palette
   static const Color primary = Color(0xFF006E26);
   static const Color primaryContainer = Color(0xFF50E36B);
-  static const Color primaryFixedDim = Color(0xFF4EE16A);      // success / progress bars
+  static const Color primaryFixedDim = Color(
+    0xFF4EE16A,
+  ); // success / progress bars
 
   // On-colors
-  static const Color onSecondaryFixed = Color(0xFF171B26);     // timer text
-  static const Color onSurfaceVariant = Color(0xFF5A5E6A);     // labels / secondary text
+  static const Color onSecondaryFixed = Color(0xFF171B26); // timer text
+  static const Color onSurfaceVariant = Color(
+    0xFF5A5E6A,
+  ); // labels / secondary text
 
   // Secondary
   static const Color secondary = Color(0xFF5A5E6A);

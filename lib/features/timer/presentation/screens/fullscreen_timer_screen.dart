@@ -29,18 +29,17 @@ class FullscreenTimerScreen extends StatefulWidget {
       ).first.timeout(const Duration(milliseconds: 300));
       // x > 0 → right side down → landscapeLeft
       // x < 0 → left side down → landscapeRight
-      initialOrientation =
-          e.x > 0 ? DeviceOrientation.landscapeLeft : DeviceOrientation.landscapeRight;
+      initialOrientation = e.x > 0
+          ? DeviceOrientation.landscapeLeft
+          : DeviceOrientation.landscapeRight;
     } catch (_) {
       initialOrientation = DeviceOrientation.landscapeLeft;
     }
 
     // Cover the screen immediately so the rotation is hidden behind a solid color.
     final entry = OverlayEntry(
-      builder: (_) => const ColoredBox(
-        color: _bgColor,
-        child: SizedBox.expand(),
-      ),
+      builder: (_) =>
+          const ColoredBox(color: _bgColor, child: SizedBox.expand()),
     );
     overlayState.insert(entry);
 
@@ -81,17 +80,19 @@ class FullscreenTimerScreen extends StatefulWidget {
       // Cover again while rotating back to portrait.
       if (context.mounted) {
         final exitEntry = OverlayEntry(
-          builder: (_) => const ColoredBox(
-            color: Colors.black,
-            child: SizedBox.expand(),
-          ),
+          builder: (_) =>
+              const ColoredBox(color: Colors.black, child: SizedBox.expand()),
         );
         Overlay.of(context).insert(exitEntry);
-        await SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
+        await SystemChrome.setPreferredOrientations([
+          DeviceOrientation.portraitUp,
+        ]);
         await Future.delayed(const Duration(milliseconds: 380));
         exitEntry.remove();
       } else {
-        await SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
+        await SystemChrome.setPreferredOrientations([
+          DeviceOrientation.portraitUp,
+        ]);
       }
     }
   }
@@ -107,6 +108,7 @@ class _FullscreenTimerScreenState extends State<FullscreenTimerScreen>
   TimerPhase? _prevPhase;
 
   bool _awaitingFlip = false;
+  bool _showIntro = false;
   double? _initialAccelZ;
   double _maxAccelX = 0;
   double _minAccelX = 0;
@@ -118,16 +120,22 @@ class _FullscreenTimerScreenState extends State<FullscreenTimerScreen>
     _timer = context.read<TimerNotifier>();
     _settings = context.read<AppSettingsNotifier>();
     _prevPhase = _timer.phase;
+    _showIntro = !_settings.fullscreenIntroSeen;
     _timer.addListener(_onTimerChanged);
     WidgetsBinding.instance.addObserver(this);
     _sampleInitialAccel();
     WakelockPlus.enable();
   }
 
+  void _dismissIntro() {
+    _settings.fullscreenIntroSeen = true;
+    setState(() => _showIntro = false);
+  }
+
   void _sampleInitialAccel() {
-    accelerometerEventStream(samplingPeriod: SensorInterval.normalInterval)
-        .first
-        .then((e) {
+    accelerometerEventStream(
+      samplingPeriod: SensorInterval.normalInterval,
+    ).first.then((e) {
       if (mounted) {
         _initialAccelZ = e.z;
       }
@@ -148,21 +156,22 @@ class _FullscreenTimerScreenState extends State<FullscreenTimerScreen>
 
   void _beginFlipListening() {
     // Snapshot the current position to know the "start" side.
-    accelerometerEventStream(samplingPeriod: SensorInterval.normalInterval)
-        .first
-        .then((e) {
+    accelerometerEventStream(
+      samplingPeriod: SensorInterval.normalInterval,
+    ).first.then((e) {
       if (!mounted) return;
       _initialAccelZ = e.z;
       _maxAccelX = e.x;
       _minAccelX = e.x;
       _accelSub?.cancel();
-      _accelSub = accelerometerEventStream(
-        samplingPeriod: SensorInterval.normalInterval,
-      ).listen((e) {
-        _maxAccelX = max(_maxAccelX, e.x);
-        _minAccelX = min(_minAccelX, e.x);
-        if (_isFlipped180(e)) _onFlipConfirmed(e.x);
-      });
+      _accelSub =
+          accelerometerEventStream(
+            samplingPeriod: SensorInterval.normalInterval,
+          ).listen((e) {
+            _maxAccelX = max(_maxAccelX, e.x);
+            _minAccelX = min(_minAccelX, e.x);
+            if (_isFlipped180(e)) _onFlipConfirmed(e.x);
+          });
     });
   }
 
@@ -176,8 +185,8 @@ class _FullscreenTimerScreenState extends State<FullscreenTimerScreen>
   bool _isFlipped180(AccelerometerEvent e) {
     final landscapeFlip = _maxAccelX > 6 && _minAccelX < -6;
     final initZ = _initialAccelZ;
-    final faceFlip = initZ != null &&
-        ((initZ > 4 && e.z < -4) || (initZ < -4 && e.z > 4));
+    final faceFlip =
+        initZ != null && ((initZ > 4 && e.z < -4) || (initZ < -4 && e.z > 4));
     return landscapeFlip || faceFlip;
   }
 
@@ -317,9 +326,138 @@ class _FullscreenTimerScreenState extends State<FullscreenTimerScreen>
                 ],
               ),
             ),
+            if (_showIntro)
+              _FullscreenIntro(
+                flipEnabled: flipEnabled,
+                onDismiss: _dismissIntro,
+              ),
           ],
         ),
       ),
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// First-run intro overlay — explains fullscreen + flip mode once.
+// ---------------------------------------------------------------------------
+
+class _FullscreenIntro extends StatelessWidget {
+  final bool flipEnabled;
+  final VoidCallback onDismiss;
+
+  const _FullscreenIntro({required this.flipEnabled, required this.onDismiss});
+
+  @override
+  Widget build(BuildContext context) {
+    return Positioned.fill(
+      // Swallow taps on the backdrop so they don't reach the timer behind, but
+      // dismiss only via the explicit "Got it" button to avoid accidental taps.
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: () {},
+        child: ColoredBox(
+          color: Colors.black.withValues(alpha: 0.82),
+          child: Center(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 24),
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 520),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(
+                      Icons.fit_screen_rounded,
+                      color: AppColors.accent,
+                      size: 40,
+                    ),
+                    const SizedBox(height: 16),
+                    const Text(
+                      'Fullscreen focus',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 24,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                    const SizedBox(height: 20),
+                    const _IntroRow(
+                      icon: Icons.do_not_disturb_on_total_silence_rounded,
+                      text:
+                          'A distraction-free timer. The screen stays awake so you '
+                          'can keep an eye on it.',
+                    ),
+                    const SizedBox(height: 14),
+                    _IntroRow(
+                      icon: Icons.screen_rotation_rounded,
+                      text: flipEnabled
+                          ? 'Flip Mode is on: when a session ends, rotate your '
+                                'phone 180° to start the next one — no tapping.'
+                          : 'Turn on Flip Mode (top-left) to advance hands-free: '
+                                'rotate your phone 180° to start the next session.',
+                    ),
+                    const SizedBox(height: 14),
+                    const _IntroRow(
+                      icon: Icons.fullscreen_exit_rounded,
+                      text: 'Tap the exit icon (top-right) to return anytime.',
+                    ),
+                    const SizedBox(height: 28),
+                    GestureDetector(
+                      onTap: onDismiss,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 40,
+                          vertical: 14,
+                        ),
+                        decoration: BoxDecoration(
+                          gradient: AppColors.primaryGradient,
+                          borderRadius: BorderRadius.circular(40),
+                        ),
+                        child: const Text(
+                          'Got it',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 16,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _IntroRow extends StatelessWidget {
+  final IconData icon;
+  final String text;
+
+  const _IntroRow({required this.icon, required this.text});
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Icon(icon, color: AppColors.accent, size: 22),
+        const SizedBox(width: 14),
+        Expanded(
+          child: Text(
+            text,
+            style: const TextStyle(
+              color: Color(0xFFC7CFCB),
+              fontSize: 15,
+              height: 1.45,
+            ),
+          ),
+        ),
+      ],
     );
   }
 }

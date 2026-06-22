@@ -94,7 +94,8 @@ class _FlipModeTile extends StatelessWidget {
     return _ToggleTile(
       icon: Icons.screen_rotation_rounded,
       label: 'Flip Mode',
-      description: 'Rotate the phone 180° in fullscreen to start the next session',
+      description:
+          'Rotate the phone 180° in fullscreen to start the next session',
       value: settings.flipMode,
       onChanged: (v) => settings.flipMode = v,
     );
@@ -193,8 +194,9 @@ class _DurationTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final timer = context.watch<TimerNotifier>();
-    final totalSeconds =
-        isPomodoro ? timer.pomodoroDuration : timer.breakDuration;
+    final totalSeconds = isPomodoro
+        ? timer.pomodoroDuration
+        : timer.breakDuration;
     final mins = totalSeconds ~/ 60;
     final secs = totalSeconds % 60;
 
@@ -490,8 +492,7 @@ class _SoundTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final timer = context.watch<TimerNotifier>();
-    final currentFile =
-        isPomodoro ? timer.pomodoroSound : timer.breakSound;
+    final currentFile = isPomodoro ? timer.pomodoroSound : timer.breakSound;
 
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
@@ -531,8 +532,7 @@ class _SoundTile extends StatelessWidget {
           GestureDetector(
             onTap: () => _showPickerSheet(context, currentFile),
             child: Container(
-              padding:
-                  const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
               decoration: BoxDecoration(
                 color: AppColors.accentLight,
                 borderRadius: BorderRadius.circular(10),
@@ -556,10 +556,8 @@ class _SoundTile extends StatelessWidget {
     showModalBottomSheet(
       context: context,
       backgroundColor: Colors.transparent,
-      builder: (_) => _SoundPickerSheet(
-        currentFile: currentFile,
-        isPomodoro: isPomodoro,
-      ),
+      builder: (_) =>
+          _SoundPickerSheet(currentFile: currentFile, isPomodoro: isPomodoro),
     );
   }
 }
@@ -628,7 +626,9 @@ class _SoundPickerSheet extends StatelessWidget {
                   },
                   child: Container(
                     padding: const EdgeInsets.symmetric(
-                        horizontal: 16, vertical: 14),
+                      horizontal: 16,
+                      vertical: 14,
+                    ),
                     decoration: BoxDecoration(
                       color: selected
                           ? AppColors.accentLight
@@ -659,8 +659,11 @@ class _SoundPickerSheet extends StatelessWidget {
                               .previewSound(s.file),
                         ),
                         if (selected)
-                          const Icon(Icons.check_rounded,
-                              color: AppColors.accent, size: 20),
+                          const Icon(
+                            Icons.check_rounded,
+                            color: AppColors.accent,
+                            size: 20,
+                          ),
                       ],
                     ),
                   ),
@@ -730,8 +733,8 @@ class _VolumeTileState extends State<_VolumeTile> {
               _volume == 0
                   ? Icons.volume_off_rounded
                   : _volume < 0.5
-                      ? Icons.volume_down_rounded
-                      : Icons.volume_up_rounded,
+                  ? Icons.volume_down_rounded
+                  : Icons.volume_up_rounded,
               color: AppColors.accent,
               size: 18,
             ),
@@ -765,13 +768,14 @@ class _VolumeTileState extends State<_VolumeTile> {
                 SliderTheme(
                   data: SliderTheme.of(context).copyWith(
                     trackHeight: 3,
-                    thumbShape:
-                        const RoundSliderThumbShape(enabledThumbRadius: 7),
-                    overlayShape:
-                        const RoundSliderOverlayShape(overlayRadius: 14),
+                    thumbShape: const RoundSliderThumbShape(
+                      enabledThumbRadius: 7,
+                    ),
+                    overlayShape: const RoundSliderOverlayShape(
+                      overlayRadius: 14,
+                    ),
                     activeTrackColor: AppColors.accent,
-                    inactiveTrackColor:
-                        AppColors.accentLight,
+                    inactiveTrackColor: AppColors.accentLight,
                     thumbColor: AppColors.accent,
                     overlayColor: AppColors.accentLight,
                   ),

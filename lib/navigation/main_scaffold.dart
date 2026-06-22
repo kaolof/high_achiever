@@ -17,20 +17,14 @@ class MainScaffold extends StatefulWidget {
 class _MainScaffoldState extends State<MainScaffold> {
   int _currentIndex = 1;
 
-  static const _baseScreens = [
-    HistoryScreen(),
-    TimerScreen(),
-  ];
+  static const _baseScreens = [HistoryScreen(), TimerScreen()];
 
   @override
   Widget build(BuildContext context) {
     final showTokens = context.watch<AppSettingsNotifier>().showTokensTab;
 
     // If tokens tab was hidden while it was active, fall back to timer
-    final screens = [
-      ..._baseScreens,
-      if (showTokens) const FichasScreen(),
-    ];
+    final screens = [..._baseScreens, if (showTokens) const FichasScreen()];
     final safeIndex = _currentIndex.clamp(0, screens.length - 1);
 
     return Scaffold(
@@ -70,7 +64,9 @@ class _GlassTabBar extends StatelessWidget {
         child: Container(
           height: 64 + MediaQuery.of(context).padding.bottom,
           color: AppColors.surface.withValues(alpha: 0.80),
-          padding: EdgeInsets.only(bottom: MediaQuery.of(context).padding.bottom),
+          padding: EdgeInsets.only(
+            bottom: MediaQuery.of(context).padding.bottom,
+          ),
           child: Row(
             children: List.generate(items.length, (i) {
               final (icon, label) = items[i];

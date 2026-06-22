@@ -73,13 +73,13 @@ class TimerNotifier extends ChangeNotifier with WidgetsBindingObserver {
       _dailyGoal = _prefs.getInt(_keyDailyGoal) ?? 8;
       _pomodoroDuration =
           _prefs.getInt(_keyPomodoroDuration) ?? defaultPomodoroDuration;
-      _breakDuration =
-          _prefs.getInt(_keyBreakDuration) ?? defaultBreakDuration;
+      _breakDuration = _prefs.getInt(_keyBreakDuration) ?? defaultBreakDuration;
       _phase = (_prefs.getBool(_keyIsBreak) ?? false)
           ? TimerPhase.breakTime
           : TimerPhase.pomodoro;
-      _remainingSeconds =
-          _phase == TimerPhase.pomodoro ? _pomodoroDuration : _breakDuration;
+      _remainingSeconds = _phase == TimerPhase.pomodoro
+          ? _pomodoroDuration
+          : _breakDuration;
       _pomodoroSound = _prefs.getString(_keyPomodoroSound) ?? defaultSound;
       _breakSound = _prefs.getString(_keyBreakSound) ?? defaultSound;
       _soundVolume = _prefs.getDouble(_keySoundVolume) ?? 1.0;
@@ -120,7 +120,10 @@ class TimerNotifier extends ChangeNotifier with WidgetsBindingObserver {
       _prefs.remove(_keyTimerStartEpoch);
       _timer?.cancel();
       _isRunning = false;
-      _audio.play(_phase == TimerPhase.pomodoro ? _pomodoroSound : _breakSound, volume: _soundVolume);
+      _audio.play(
+        _phase == TimerPhase.pomodoro ? _pomodoroSound : _breakSound,
+        volume: _soundVolume,
+      );
       if (_phase == TimerPhase.pomodoro) {
         _completedToday++;
         _saveToPrefs();
@@ -194,7 +197,8 @@ class TimerNotifier extends ChangeNotifier with WidgetsBindingObserver {
     await _prefs.setString(_keyBreakSound, soundFile);
   }
 
-  void previewSound(String soundFile) => _audio.play(soundFile, volume: _soundVolume);
+  void previewSound(String soundFile) =>
+      _audio.play(soundFile, volume: _soundVolume);
 
   Future<void> setSoundVolume(double volume) async {
     _soundVolume = volume;
@@ -232,6 +236,10 @@ class TimerNotifier extends ChangeNotifier with WidgetsBindingObserver {
 
   void _start() {
     _isRunning = true;
+    // Fallback for users who skipped the onboarding priming step: ensure the OS
+    // permission is requested when notifications are actually needed. The plugin
+    // is idempotent — it won't re-prompt once the user has already decided.
+    _notifications.requestPermissions();
     _prefs.setInt(_keyTimerStartEpoch, DateTime.now().millisecondsSinceEpoch);
     _prefs.setInt(_keyRemainingAtStart, _remainingSeconds);
     _notifications.scheduleCompletion(
@@ -265,7 +273,10 @@ class TimerNotifier extends ChangeNotifier with WidgetsBindingObserver {
     // since audioplayers does not play reliably when the app isn't visible.
     if (_isForeground) {
       _notifications.cancel();
-      _audio.play(_phase == TimerPhase.pomodoro ? _pomodoroSound : _breakSound, volume: _soundVolume);
+      _audio.play(
+        _phase == TimerPhase.pomodoro ? _pomodoroSound : _breakSound,
+        volume: _soundVolume,
+      );
     }
 
     if (_phase == TimerPhase.pomodoro) {

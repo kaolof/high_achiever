@@ -6,6 +6,7 @@ import 'core/providers/app_settings_notifier.dart';
 import 'core/services/audio_service.dart';
 import 'core/services/notification_service.dart';
 import 'core/theme/app_theme.dart';
+import 'features/onboarding/presentation/screens/onboarding_screen.dart';
 import 'features/timer/domain/timer_notifier.dart';
 import 'navigation/main_scaffold.dart';
 
@@ -21,20 +22,31 @@ void main() async {
 class HighAchieverApp extends StatelessWidget {
   final SharedPreferences prefs;
   final NotificationService notifications;
-  const HighAchieverApp({super.key, required this.prefs, required this.notifications});
+  const HighAchieverApp({
+    super.key,
+    required this.prefs,
+    required this.notifications,
+  });
 
   @override
   Widget build(BuildContext context) {
     return MultiProvider(
       providers: [
-        ChangeNotifierProvider(create: (_) => TimerNotifier(prefs, AudioService(), notifications)),
+        Provider<NotificationService>.value(value: notifications),
+        ChangeNotifierProvider(
+          create: (_) => TimerNotifier(prefs, AudioService(), notifications),
+        ),
         ChangeNotifierProvider(create: (_) => AppSettingsNotifier(prefs)),
       ],
       child: MaterialApp(
         title: 'High Achiever',
         debugShowCheckedModeBanner: false,
         theme: AppTheme.light,
-        home: const MainScaffold(),
+        home: Consumer<AppSettingsNotifier>(
+          builder: (_, settings, __) => settings.onboardingCompleted
+              ? const MainScaffold()
+              : const OnboardingScreen(),
+        ),
       ),
     );
   }

@@ -13,7 +13,10 @@ class SessionStats extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return _StatItem(label: 'TODAY', value: '$completedSessions/$totalSessions');
+    return _StatItem(
+      label: 'TODAY',
+      value: '$completedSessions/$totalSessions',
+    );
   }
 }
 

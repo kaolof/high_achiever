@@ -6,11 +6,7 @@ class TimerDisplay extends StatelessWidget {
   final int minutes;
   final int seconds;
 
-  const TimerDisplay({
-    super.key,
-    required this.minutes,
-    required this.seconds,
-  });
+  const TimerDisplay({super.key, required this.minutes, required this.seconds});
 
   @override
   Widget build(BuildContext context) {

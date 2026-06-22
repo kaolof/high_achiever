@@ -11,10 +11,7 @@ class HistoryScreen extends StatelessWidget {
       body: Center(
         child: Text(
           'History',
-          style: TextStyle(
-            color: AppColors.textSecondary,
-            fontSize: 18,
-          ),
+          style: TextStyle(color: AppColors.textSecondary, fontSize: 18),
         ),
       ),
     );

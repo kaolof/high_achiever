@@ -45,7 +45,9 @@ class _DailyGoalSheetState extends State<_DailyGoalSheet> {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
+      padding: EdgeInsets.only(
+        bottom: MediaQuery.of(context).viewInsets.bottom,
+      ),
       child: Container(
         decoration: const BoxDecoration(
           color: Colors.white,
@@ -100,7 +102,8 @@ class _DailyGoalSheetState extends State<_DailyGoalSheet> {
                     perspective: 0.003,
                     diameterRatio: 2.5,
                     physics: const FixedExtentScrollPhysics(),
-                    onSelectedItemChanged: (i) => setState(() => _selected = i + 1),
+                    onSelectedItemChanged: (i) =>
+                        setState(() => _selected = i + 1),
                     childDelegate: ListWheelChildBuilderDelegate(
                       childCount: _maxGoal,
                       builder: (context, i) {
@@ -112,7 +115,9 @@ class _DailyGoalSheetState extends State<_DailyGoalSheet> {
                             style: TextStyle(
                               color: isSelected
                                   ? AppColors.accent
-                                  : AppColors.textSecondary.withValues(alpha: 0.4),
+                                  : AppColors.textSecondary.withValues(
+                                      alpha: 0.4,
+                                    ),
                               fontSize: isSelected ? 28 : 22,
                               fontWeight: isSelected
                                   ? FontWeight.w800
