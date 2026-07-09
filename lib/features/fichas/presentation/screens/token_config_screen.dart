@@ -22,7 +22,7 @@ class _TokenConfigScreenState extends State<TokenConfigScreen> {
   int _daysPerWeek = 5;
   int _weekStartDay = 1; // 1 = Monday … 7 = Sunday
   int _weeklyGoal = 18;
-  int _nextId = 0;
+  int _idCounter = 0;
 
   @override
   void initState() {
@@ -38,7 +38,6 @@ class _TokenConfigScreenState extends State<TokenConfigScreen> {
     _weekStartDay = t.weekStartDay;
     _weeklyGoal = t.weeklyGoal;
     _rewardController.text = t.reward;
-    _nextId = t.tasks.length + 1;
   }
 
   int get _taskCount => _tasks.length;
@@ -54,8 +53,14 @@ class _TokenConfigScreenState extends State<TokenConfigScreen> {
   }
 
   void _addTask() => setState(() => _tasks.add(
-        _TaskDraft(id: 'new_${_nextId++}', controller: TextEditingController()),
+        _TaskDraft(id: _newTaskId(), controller: TextEditingController()),
       ));
+
+  // Unique across sessions. An id derived from the task count could be reused
+  // after a delete, colliding with an existing task's completions (shared
+  // toggle state) and breaking saveTemplate's UNIQUE constraint on a re-add.
+  String _newTaskId() =>
+      'task_${DateTime.now().microsecondsSinceEpoch}_${_idCounter++}';
 
   void _removeTask(int i) {
     setState(() {

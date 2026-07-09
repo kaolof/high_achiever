@@ -133,4 +133,17 @@ void main() {
     expect(n.weeklyGoal, 20);
     expect(n.reward, 'New reward');
   });
+
+  test('completions for deleted tasks do not count toward the week', () async {
+    // 'ghost' is a task the user completed and then removed from the template.
+    // Its completion row survives in storage but must be ignored everywhere.
+    final today = dayOnly(DateTime.now());
+    final n = TokenSystemNotifier(_TestRepo(template, {
+      dayKey(today): {'t1', 'ghost'},
+    }));
+    await pumpEventQueue();
+
+    expect(n.weeklyEarned, 1); // only the active 't1' counts, not 'ghost'
+    expect(n.todayDoneCount, 1);
+  });
 }

@@ -52,12 +52,21 @@ class TokenSystemNotifier extends ChangeNotifier {
   // ── Derived state for the UI ──────────────────────────────────────────────
   String get todayLabel => _weekdayNames[_today.weekday - 1];
 
+  // Ids of the tasks currently in the template. Completions for tasks the user
+  // has since deleted still live in storage, but must not count toward the week
+  // — otherwise they inflate the totals and can unlock the reward in false.
+  Set<String> get _activeTaskIds => {for (final t in _template.tasks) t.id};
+
   Set<String> get _todayCompleted => _weekLogs[dayKey(_today)] ?? const {};
   bool isDoneToday(String taskId) => _todayCompleted.contains(taskId);
-  int get todayDoneCount => _todayCompleted.length;
+  int get todayDoneCount =>
+      _todayCompleted.where(_activeTaskIds.contains).length;
 
-  int get weeklyEarned =>
-      _weekLogs.values.fold(0, (sum, ids) => sum + ids.length);
+  int get weeklyEarned {
+    final active = _activeTaskIds;
+    return _weekLogs.values
+        .fold(0, (sum, ids) => sum + ids.where(active.contains).length);
+  }
   int get weeklyMax => _template.maxTokens;
   int get weeklyGoal => _template.weeklyGoal;
   String get reward => _template.reward;
