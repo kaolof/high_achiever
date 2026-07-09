@@ -10,6 +10,12 @@
     <uses-permission android:name="android.permission.USE_EXACT_ALARM"/>
     <uses-permission android:name="android.permission.VIBRATE"/>
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED"/>
+    <!-- Foreground service keeps the timer's process (and its Dart ticker) alive
+         while the app runs in the background, so the completion sound fires
+         reliably. Aggressive OEMs (e.g. Xiaomi/MIUI) otherwise kill the process
+         and drop the scheduled alarm, leaving the countdown stuck at zero. -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE"/>
 
     <application
         android:label="high_achiever"
@@ -42,6 +48,20 @@
         <meta-data
             android:name="flutterEmbedding"
             android:value="2" />
+
+        <!-- Foreground service that hosts the live countdown notification and
+             keeps the app process alive while the timer runs in the background
+             (see NotificationService._startCountdownService). stopWithTask=false
+             so the timer survives the app being swiped from Recents. -->
+        <service
+            android:name="com.dexterous.flutterlocalnotifications.ForegroundService"
+            android:exported="false"
+            android:stopWithTask="false"
+            android:foregroundServiceType="specialUse">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="Pomodoro focus timer counting down in the background"/>
+        </service>
 
         <!-- Required by flutter_local_notifications for scheduled notifications -->
         <receiver android:exported="false" android:name="com.dexterous.flutterlocalnotifications.ScheduledNotificationReceiver"/>
