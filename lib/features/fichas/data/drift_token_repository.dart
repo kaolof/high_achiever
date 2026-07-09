@@ -4,9 +4,8 @@ import '../domain/token_models.dart';
 import '../domain/token_repository.dart';
 import 'token_database.dart';
 
-/// SQLite-backed [TokenRepository] (Fase B2). Same contract as
-/// [FakeTokenRepository], so swapping it in is a one-line change in main.dart.
-/// Data now survives app restarts.
+/// SQLite-backed [TokenRepository] (Fase B2). Wired in main.dart.
+/// Data survives app restarts.
 class DriftTokenRepository implements TokenRepository {
   final TokenDatabase _db;
   DriftTokenRepository(this._db);
