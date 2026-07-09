@@ -29,10 +29,12 @@ class _TokenConfigScreenState extends State<TokenConfigScreen> {
     super.initState();
     final t = context.read<TokenSystemNotifier>().template;
     for (final task in t.tasks) {
-      _tasks.add(_TaskDraft(
-        id: task.id,
-        controller: TextEditingController(text: task.name),
-      ));
+      _tasks.add(
+        _TaskDraft(
+          id: task.id,
+          controller: TextEditingController(text: task.name),
+        ),
+      );
     }
     _daysPerWeek = t.daysPerWeek;
     _weekStartDay = t.weekStartDay;
@@ -52,9 +54,11 @@ class _TokenConfigScreenState extends State<TokenConfigScreen> {
     super.dispose();
   }
 
-  void _addTask() => setState(() => _tasks.add(
-        _TaskDraft(id: _newTaskId(), controller: TextEditingController()),
-      ));
+  void _addTask() => setState(
+    () => _tasks.add(
+      _TaskDraft(id: _newTaskId(), controller: TextEditingController()),
+    ),
+  );
 
   // Unique across sessions. An id derived from the task count could be reused
   // after a delete, colliding with an existing task's completions (shared
@@ -70,9 +74,9 @@ class _TokenConfigScreenState extends State<TokenConfigScreen> {
   }
 
   void _setDaysPerWeek(int v) => setState(() {
-        _daysPerWeek = v;
-        _clampGoal();
-      });
+    _daysPerWeek = v;
+    _clampGoal();
+  });
 
   void _clampGoal() {
     _weeklyGoal = _weeklyGoal.clamp(1, _maxTokens == 0 ? 1 : _maxTokens);
@@ -223,8 +227,11 @@ class _TokenConfigScreenState extends State<TokenConfigScreen> {
                     labelStyle: const TextStyle(color: AppColors.textSecondary),
                     filled: true,
                     fillColor: AppColors.surfaceContainerLow,
-                    prefixIcon: const Icon(Icons.card_giftcard_rounded,
-                        color: AppColors.textSecondary, size: 20),
+                    prefixIcon: const Icon(
+                      Icons.card_giftcard_rounded,
+                      color: AppColors.textSecondary,
+                      size: 20,
+                    ),
                     border: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(14),
                       borderSide: BorderSide.none,
@@ -235,8 +242,10 @@ class _TokenConfigScreenState extends State<TokenConfigScreen> {
                     ),
                     focusedBorder: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(14),
-                      borderSide:
-                          const BorderSide(color: AppColors.primary, width: 1.5),
+                      borderSide: const BorderSide(
+                        color: AppColors.primary,
+                        width: 1.5,
+                      ),
                     ),
                   ),
                 ),
@@ -264,7 +273,11 @@ class _MaxBanner extends StatelessWidget {
   final int days;
   final int max;
 
-  const _MaxBanner({required this.tasks, required this.days, required this.max});
+  const _MaxBanner({
+    required this.tasks,
+    required this.days,
+    required this.max,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -376,8 +389,11 @@ class _TaskEditRow extends StatelessWidget {
       padding: const EdgeInsets.only(left: 16, right: 6),
       child: Row(
         children: [
-          const Icon(Icons.drag_indicator_rounded,
-              color: AppColors.outlineVariant, size: 20),
+          const Icon(
+            Icons.drag_indicator_rounded,
+            color: AppColors.outlineVariant,
+            size: 20,
+          ),
           const SizedBox(width: 8),
           Expanded(
             child: TextField(
@@ -401,8 +417,9 @@ class _TaskEditRow extends StatelessWidget {
             onPressed: canDelete ? onDelete : null,
             icon: Icon(
               Icons.remove_circle_outline_rounded,
-              color:
-                  canDelete ? AppColors.textSecondary : AppColors.outlineVariant,
+              color: canDelete
+                  ? AppColors.textSecondary
+                  : AppColors.outlineVariant,
               size: 20,
             ),
           ),
@@ -590,8 +607,11 @@ class _SaveButton extends StatelessWidget {
         child: const Row(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(Icons.check_rounded,
-                color: AppColors.surfaceContainerLowest, size: 22),
+            Icon(
+              Icons.check_rounded,
+              color: AppColors.surfaceContainerLowest,
+              size: 22,
+            ),
             SizedBox(width: 10),
             Text(
               'Save template',

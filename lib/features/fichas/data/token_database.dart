@@ -60,12 +60,12 @@ class TokenDatabase extends _$TokenDatabase {
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
-        onCreate: (m) async => m.createAll(),
-        onUpgrade: (m, from, to) async {
-          // v1 → v2: reward-claim tracking.
-          if (from < 2) await m.createTable(weekClaims);
-        },
-      );
+    onCreate: (m) async => m.createAll(),
+    onUpgrade: (m, from, to) async {
+      // v1 → v2: reward-claim tracking.
+      if (from < 2) await m.createTable(weekClaims);
+    },
+  );
 }
 
 LazyDatabase _open() {

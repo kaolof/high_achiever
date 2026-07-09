@@ -26,12 +26,38 @@ class TokenSystemNotifier extends ChangeNotifier {
   bool _rewardClaimed = false;
 
   static const _weekdayNames = [
-    'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday',
+    'Monday',
+    'Tuesday',
+    'Wednesday',
+    'Thursday',
+    'Friday',
+    'Saturday',
+    'Sunday',
   ];
 
+  // Safe defaults used only if storage fails at startup, so the UI renders a
+  // usable empty week instead of a spinner that never resolves.
+  static const _fallbackTemplate = TokenTemplate(
+    tasks: [],
+    daysPerWeek: 5,
+    weekStartDay: DateTime.monday,
+    weeklyGoal: 1,
+    reward: '',
+  );
+
   Future<void> _init() async {
-    _template = await _repo.loadTemplate();
-    await _reloadWeek();
+    try {
+      _template = await _repo.loadTemplate();
+      await _reloadWeek();
+    } catch (e, st) {
+      // A storage failure must not hang the UI on an infinite spinner.
+      debugPrint('TokenSystemNotifier init failed: $e\n$st');
+      _template = _fallbackTemplate;
+      _today = dayOnly(DateTime.now());
+      _weekStart = weekStartFor(_today, _template.weekStartDay);
+      _weekLogs.clear();
+      _rewardClaimed = false;
+    }
     _loading = false;
     notifyListeners();
   }
@@ -64,9 +90,12 @@ class TokenSystemNotifier extends ChangeNotifier {
 
   int get weeklyEarned {
     final active = _activeTaskIds;
-    return _weekLogs.values
-        .fold(0, (sum, ids) => sum + ids.where(active.contains).length);
+    return _weekLogs.values.fold(
+      0,
+      (sum, ids) => sum + ids.where(active.contains).length,
+    );
   }
+
   int get weeklyMax => _template.maxTokens;
   int get weeklyGoal => _template.weeklyGoal;
   String get reward => _template.reward;

@@ -32,7 +32,11 @@ class RewardCelebrationScreen extends StatefulWidget {
         opaque: true,
         transitionDuration: const Duration(milliseconds: 350),
         pageBuilder: (_, __, ___) => RewardCelebrationScreen(
-            reward: reward, earned: earned, max: max, onClaim: onClaim),
+          reward: reward,
+          earned: earned,
+          max: max,
+          onClaim: onClaim,
+        ),
         transitionsBuilder: (_, anim, __, child) =>
             FadeTransition(opacity: anim, child: child),
       ),
@@ -128,10 +132,12 @@ class _RewardCelebrationScreenState extends State<RewardCelebrationScreen>
               const Spacer(flex: 4),
               FadeTransition(
                 opacity: _fade,
-                child: _ClaimButton(onTap: () {
-                  widget.onClaim?.call();
-                  Navigator.pop(context);
-                }),
+                child: _ClaimButton(
+                  onTap: () {
+                    widget.onClaim?.call();
+                    Navigator.pop(context);
+                  },
+                ),
               ),
               const SizedBox(height: 10),
               FadeTransition(
@@ -193,14 +199,20 @@ class _Medal extends StatelessWidget {
           const Positioned(
             top: 4,
             right: 18,
-            child: Icon(Icons.auto_awesome,
-                color: AppColors.primaryContainer, size: 26),
+            child: Icon(
+              Icons.auto_awesome,
+              color: AppColors.primaryContainer,
+              size: 26,
+            ),
           ),
           const Positioned(
             bottom: 8,
             left: 20,
-            child: Icon(Icons.auto_awesome,
-                color: AppColors.primaryFixedDim, size: 18),
+            child: Icon(
+              Icons.auto_awesome,
+              color: AppColors.primaryFixedDim,
+              size: 18,
+            ),
           ),
         ],
       ),
@@ -224,8 +236,11 @@ class _RewardPill extends StatelessWidget {
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          const Icon(Icons.card_giftcard_rounded,
-              color: AppColors.primary, size: 20),
+          const Icon(
+            Icons.card_giftcard_rounded,
+            color: AppColors.primary,
+            size: 20,
+          ),
           const SizedBox(width: 10),
           Text(
             reward,

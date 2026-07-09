@@ -52,7 +52,10 @@ class FichasScreen extends StatelessWidget {
         ),
         actions: [
           IconButton(
-            icon: const Icon(Icons.tune_rounded, color: AppColors.textSecondary),
+            icon: const Icon(
+              Icons.tune_rounded,
+              color: AppColors.textSecondary,
+            ),
             tooltip: 'Configure',
             onPressed: () => Navigator.push(
               context,
@@ -63,7 +66,8 @@ class FichasScreen extends StatelessWidget {
       ),
       body: n.isLoading
           ? const Center(
-              child: CircularProgressIndicator(color: AppColors.primary))
+              child: CircularProgressIndicator(color: AppColors.primary),
+            )
           : ListView(
               padding: const EdgeInsets.fromLTRB(24, 8, 24, 120),
               children: [
@@ -180,8 +184,9 @@ class _WeeklySummaryCard extends StatelessWidget {
                 value: value,
                 minHeight: 10,
                 backgroundColor: AppColors.surfaceContainerLow,
-                valueColor:
-                    const AlwaysStoppedAnimation<Color>(AppColors.primary),
+                valueColor: const AlwaysStoppedAnimation<Color>(
+                  AppColors.primary,
+                ),
               ),
             ),
           ),
@@ -256,8 +261,8 @@ class _RewardCard extends StatelessWidget {
               claimed
                   ? Icons.check_rounded
                   : (unlocked
-                      ? Icons.celebration_rounded
-                      : Icons.card_giftcard_rounded),
+                        ? Icons.celebration_rounded
+                        : Icons.card_giftcard_rounded),
               color: highlight
                   ? AppColors.surfaceContainerLowest
                   : AppColors.textSecondary,
@@ -269,8 +274,10 @@ class _RewardCard extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(claimed ? 'REWARD CLAIMED' : 'YOUR REWARD',
-                    style: _labelStyle),
+                Text(
+                  claimed ? 'REWARD CLAIMED' : 'YOUR REWARD',
+                  style: _labelStyle,
+                ),
                 const SizedBox(height: 3),
                 Text(
                   reward,
@@ -390,8 +397,11 @@ class _TaskRow extends StatelessWidget {
                     : Border.all(color: AppColors.outlineVariant, width: 2),
               ),
               child: done
-                  ? const Icon(Icons.check_rounded,
-                      color: AppColors.surfaceContainerLowest, size: 18)
+                  ? const Icon(
+                      Icons.check_rounded,
+                      color: AppColors.surfaceContainerLowest,
+                      size: 18,
+                    )
                   : null,
             ),
             const SizedBox(width: 18),

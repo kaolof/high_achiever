@@ -30,7 +30,10 @@ class _TestRepo implements TokenRepository {
 
   @override
   Future<void> setTaskCompleted(
-      DateTime day, String taskId, bool completed) async {
+    DateTime day,
+    String taskId,
+    bool completed,
+  ) async {
     final s = _logs.putIfAbsent(dayKey(day), () => <String>{});
     if (completed) {
       s.add(taskId);
@@ -50,6 +53,26 @@ class _TestRepo implements TokenRepository {
       claims.add(dayKey(weekStart));
 }
 
+/// Every read fails — models storage that's unavailable at startup.
+class _ThrowingRepo implements TokenRepository {
+  @override
+  Future<TokenTemplate> loadTemplate() async => throw Exception('storage down');
+  @override
+  Future<List<DayLog>> logsForWeek(DateTime weekStart) async => [];
+  @override
+  Future<void> saveTemplate(TokenTemplate t) async {}
+  @override
+  Future<void> setTaskCompleted(
+    DateTime day,
+    String taskId,
+    bool completed,
+  ) async {}
+  @override
+  Future<bool> isRewardClaimed(DateTime weekStart) async => false;
+  @override
+  Future<void> setRewardClaimed(DateTime weekStart) async {}
+}
+
 void main() {
   const template = TokenTemplate(
     tasks: [
@@ -65,36 +88,38 @@ void main() {
     reward: 'Test reward',
   );
 
-  test('toggling tasks tracks tokens and crosses the unlock threshold',
-      () async {
-    final n = TokenSystemNotifier(_TestRepo(template, {}));
-    await pumpEventQueue();
+  test(
+    'toggling tasks tracks tokens and crosses the unlock threshold',
+    () async {
+      final n = TokenSystemNotifier(_TestRepo(template, {}));
+      await pumpEventQueue();
 
-    expect(n.isLoading, isFalse);
-    expect(n.weeklyMax, 25); // 5 tasks × 5 days
-    expect(n.weeklyEarned, 0);
-    expect(n.rewardUnlocked, isFalse);
+      expect(n.isLoading, isFalse);
+      expect(n.weeklyMax, 25); // 5 tasks × 5 days
+      expect(n.weeklyEarned, 0);
+      expect(n.rewardUnlocked, isFalse);
 
-    expect(await n.toggleTask('t1'), isFalse); // 1 token, below goal
-    expect(await n.toggleTask('t2'), isFalse); // 2 tokens
-    expect(n.weeklyEarned, 2);
-    expect(n.toGo, 1);
+      expect(await n.toggleTask('t1'), isFalse); // 1 token, below goal
+      expect(await n.toggleTask('t2'), isFalse); // 2 tokens
+      expect(n.weeklyEarned, 2);
+      expect(n.toGo, 1);
 
-    // Reaching the goal returns true exactly once (the unlock transition).
-    expect(await n.toggleTask('t3'), isTrue);
-    expect(n.rewardUnlocked, isTrue);
-    expect(n.toGo, 0);
+      // Reaching the goal returns true exactly once (the unlock transition).
+      expect(await n.toggleTask('t3'), isTrue);
+      expect(n.rewardUnlocked, isTrue);
+      expect(n.toGo, 0);
 
-    // A further completion does NOT re-fire the unlock.
-    expect(await n.toggleTask('t4'), isFalse);
-    expect(n.weeklyEarned, 4);
+      // A further completion does NOT re-fire the unlock.
+      expect(await n.toggleTask('t4'), isFalse);
+      expect(n.weeklyEarned, 4);
 
-    // Undoing drops back below the goal.
-    expect(await n.toggleTask('t4'), isFalse);
-    expect(await n.toggleTask('t3'), isFalse);
-    expect(n.weeklyEarned, 2);
-    expect(n.rewardUnlocked, isFalse);
-  });
+      // Undoing drops back below the goal.
+      expect(await n.toggleTask('t4'), isFalse);
+      expect(await n.toggleTask('t3'), isFalse);
+      expect(n.weeklyEarned, 2);
+      expect(n.rewardUnlocked, isFalse);
+    },
+  );
 
   test('isDoneToday reflects completed tasks', () async {
     final n = TokenSystemNotifier(_TestRepo(template, {}));
@@ -138,12 +163,26 @@ void main() {
     // 'ghost' is a task the user completed and then removed from the template.
     // Its completion row survives in storage but must be ignored everywhere.
     final today = dayOnly(DateTime.now());
-    final n = TokenSystemNotifier(_TestRepo(template, {
-      dayKey(today): {'t1', 'ghost'},
-    }));
+    final n = TokenSystemNotifier(
+      _TestRepo(template, {
+        dayKey(today): {'t1', 'ghost'},
+      }),
+    );
     await pumpEventQueue();
 
     expect(n.weeklyEarned, 1); // only the active 't1' counts, not 'ghost'
     expect(n.todayDoneCount, 1);
   });
+
+  test(
+    'a storage failure ends loading instead of hanging the spinner',
+    () async {
+      final n = TokenSystemNotifier(_ThrowingRepo());
+      await pumpEventQueue();
+
+      expect(n.isLoading, isFalse); // no infinite spinner
+      expect(n.template.tasks, isEmpty);
+      expect(n.weeklyEarned, 0);
+    },
+  );
 }

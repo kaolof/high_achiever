@@ -26,13 +26,18 @@ void main() {
   });
 
   test('saveTemplate round-trips through SQLite', () async {
-    await repo.saveTemplate(const TokenTemplate(
-      tasks: [Task(id: 'a', name: 'Alpha'), Task(id: 'b', name: 'Beta')],
-      daysPerWeek: 6,
-      weekStartDay: DateTime.sunday,
-      weeklyGoal: 9,
-      reward: 'Movie night',
-    ));
+    await repo.saveTemplate(
+      const TokenTemplate(
+        tasks: [
+          Task(id: 'a', name: 'Alpha'),
+          Task(id: 'b', name: 'Beta'),
+        ],
+        daysPerWeek: 6,
+        weekStartDay: DateTime.sunday,
+        weeklyGoal: 9,
+        reward: 'Movie night',
+      ),
+    );
     final t = await repo.loadTemplate();
     expect(t.tasks.map((e) => e.name).toList(), ['Alpha', 'Beta']);
     expect(t.daysPerWeek, 6);
@@ -41,28 +46,34 @@ void main() {
     expect(t.reward, 'Movie night');
   });
 
-  test('completions count only within the week window, no double count',
-      () async {
-    // 2026-07-06 is the Monday of the week containing today (2026-07-09).
-    final weekStart = weekStartFor(DateTime(2026, 7, 6), DateTime.monday);
+  test(
+    'completions count only within the week window, no double count',
+    () async {
+      // 2026-07-06 is the Monday of the week containing today (2026-07-09).
+      final weekStart = weekStartFor(DateTime(2026, 7, 6), DateTime.monday);
 
-    await repo.setTaskCompleted(DateTime(2026, 7, 6), 't1', true);
-    await repo.setTaskCompleted(DateTime(2026, 7, 6), 't2', true);
-    await repo.setTaskCompleted(DateTime(2026, 7, 7), 't1', true);
-    await repo.setTaskCompleted(DateTime(2026, 7, 13), 't1', true); // next week
+      await repo.setTaskCompleted(DateTime(2026, 7, 6), 't1', true);
+      await repo.setTaskCompleted(DateTime(2026, 7, 6), 't2', true);
+      await repo.setTaskCompleted(DateTime(2026, 7, 7), 't1', true);
+      await repo.setTaskCompleted(
+        DateTime(2026, 7, 13),
+        't1',
+        true,
+      ); // next week
 
-    int total(List<DayLog> l) => l.fold(0, (s, d) => s + d.tokens);
+      int total(List<DayLog> l) => l.fold(0, (s, d) => s + d.tokens);
 
-    expect(total(await repo.logsForWeek(weekStart)), 3);
+      expect(total(await repo.logsForWeek(weekStart)), 3);
 
-    // Re-completing the same (day, task) must not double count.
-    await repo.setTaskCompleted(DateTime(2026, 7, 7), 't1', true);
-    expect(total(await repo.logsForWeek(weekStart)), 3);
+      // Re-completing the same (day, task) must not double count.
+      await repo.setTaskCompleted(DateTime(2026, 7, 7), 't1', true);
+      expect(total(await repo.logsForWeek(weekStart)), 3);
 
-    // Toggling off removes it.
-    await repo.setTaskCompleted(DateTime(2026, 7, 6), 't1', false);
-    expect(total(await repo.logsForWeek(weekStart)), 2);
-  });
+      // Toggling off removes it.
+      await repo.setTaskCompleted(DateTime(2026, 7, 6), 't1', false);
+      expect(total(await repo.logsForWeek(weekStart)), 2);
+    },
+  );
 
   test('reward claim persists per week and is idempotent', () async {
     final wk = weekStartFor(DateTime(2026, 7, 6), DateTime.monday);

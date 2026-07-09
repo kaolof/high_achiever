@@ -18,5 +18,6 @@ DateTime parseDayKey(String key) {
 DateTime weekStartFor(DateTime day, int weekStartDay) {
   final d = dayOnly(day);
   final diff = (d.weekday - weekStartDay + 7) % 7;
-  return d.subtract(Duration(days: diff));
+  // Calendar arithmetic (not Duration) so DST-length days don't shift the date.
+  return DateTime(d.year, d.month, d.day - diff);
 }

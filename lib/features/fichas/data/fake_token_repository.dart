@@ -18,18 +18,18 @@ class FakeTokenRepository implements TokenRepository {
   }
 
   static TokenTemplate _seedTemplate() => const TokenTemplate(
-        tasks: [
-          Task(id: 't1', name: 'Write 500 words'),
-          Task(id: 't2', name: 'Deep work block'),
-          Task(id: 't3', name: 'Exercise'),
-          Task(id: 't4', name: 'Read 20 min'),
-          Task(id: 't5', name: 'Review project'),
-        ],
-        daysPerWeek: 5,
-        weekStartDay: DateTime.monday,
-        weeklyGoal: 18,
-        reward: 'Dinner out 🍽️',
-      );
+    tasks: [
+      Task(id: 't1', name: 'Write 500 words'),
+      Task(id: 't2', name: 'Deep work block'),
+      Task(id: 't3', name: 'Exercise'),
+      Task(id: 't4', name: 'Read 20 min'),
+      Task(id: 't5', name: 'Review project'),
+    ],
+    daysPerWeek: 5,
+    weekStartDay: DateTime.monday,
+    weeklyGoal: 18,
+    reward: 'Dinner out 🍽️',
+  );
 
   // Seeds ~13 tokens across earlier days of the week plus 2 today, so the
   // weekly goal (18) is reachable by checking off today's remaining tasks.
@@ -37,10 +37,18 @@ class FakeTokenRepository implements TokenRepository {
     final today = dayOnly(DateTime.now());
     _logs[dayKey(today)] = {'t1', 't2'};
     _logs[dayKey(today.subtract(const Duration(days: 1)))] = {
-      't1', 't2', 't3', 't4', 't5',
+      't1',
+      't2',
+      't3',
+      't4',
+      't5',
     };
     _logs[dayKey(today.subtract(const Duration(days: 2)))] = {
-      't1', 't2', 't3', 't4', 't5',
+      't1',
+      't2',
+      't3',
+      't4',
+      't5',
     };
     _logs[dayKey(today.subtract(const Duration(days: 3)))] = {'t1', 't2', 't3'};
   }
@@ -54,7 +62,7 @@ class FakeTokenRepository implements TokenRepository {
 
   @override
   Future<List<DayLog>> logsForWeek(DateTime weekStart) async {
-    final end = weekStart.add(const Duration(days: 7));
+    final end = DateTime(weekStart.year, weekStart.month, weekStart.day + 7);
     final result = <DayLog>[];
     _logs.forEach((k, ids) {
       final d = parseDayKey(k);
@@ -67,7 +75,10 @@ class FakeTokenRepository implements TokenRepository {
 
   @override
   Future<void> setTaskCompleted(
-      DateTime day, String taskId, bool completed) async {
+    DateTime day,
+    String taskId,
+    bool completed,
+  ) async {
     final set = _logs.putIfAbsent(dayKey(day), () => <String>{});
     if (completed) {
       set.add(taskId);

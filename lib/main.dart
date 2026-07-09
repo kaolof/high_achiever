@@ -21,8 +21,13 @@ void main() async {
   final tokenRepo = DriftTokenRepository(TokenDatabase());
   await tokenRepo.seedIfEmpty();
   SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
-  runApp(HighAchieverApp(
-      prefs: prefs, notifications: notifications, tokenRepo: tokenRepo));
+  runApp(
+    HighAchieverApp(
+      prefs: prefs,
+      notifications: notifications,
+      tokenRepo: tokenRepo,
+    ),
+  );
 }
 
 class HighAchieverApp extends StatelessWidget {
@@ -40,7 +45,9 @@ class HighAchieverApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MultiProvider(
       providers: [
-        ChangeNotifierProvider(create: (_) => TimerNotifier(prefs, AudioService(), notifications)),
+        ChangeNotifierProvider(
+          create: (_) => TimerNotifier(prefs, AudioService(), notifications),
+        ),
         ChangeNotifierProvider(create: (_) => AppSettingsNotifier(prefs)),
         ChangeNotifierProvider(create: (_) => TokenSystemNotifier(tokenRepo)),
       ],
