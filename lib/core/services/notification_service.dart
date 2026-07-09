@@ -17,11 +17,14 @@ class NotificationService {
     'chime.wav': ('timer_chime', 'chime'),
     'timer_complete.wav': ('timer_complete', 'timer_complete'),
     'bell_ringing.wav': ('timer_bell_ringing', 'bell_ringing'),
-
   };
 
   final FlutterLocalNotificationsPlugin _plugin =
       FlutterLocalNotificationsPlugin();
+
+  AndroidFlutterLocalNotificationsPlugin? get _android =>
+      _plugin.resolvePlatformSpecificImplementation<
+          AndroidFlutterLocalNotificationsPlugin>();
 
   Future<void> init() async {
     tz_data.initializeTimeZones();
@@ -47,11 +50,10 @@ class NotificationService {
       ),
     );
 
+    final androidImpl = _android;
+
     // Create one Android notification channel per sound so the OS knows
     // which audio file to play even when the app is not running.
-    final androidImpl = _plugin
-        .resolvePlatformSpecificImplementation<
-            AndroidFlutterLocalNotificationsPlugin>();
     for (final entry in _soundChannels.entries) {
       final (channelId, rawName) = entry.value;
       await androidImpl?.createNotificationChannel(
@@ -82,25 +84,24 @@ class NotificationService {
 
     // Required on Android 13+ to show any notification at all.
     await androidImpl?.requestNotificationsPermission();
+
+    // The backup completion alarm uses alarmClock mode, which requires
+    // exact-alarm capability; without it the plugin throws and we silently
+    // degrade to a Doze-deferred inexact alarm that never fires on time in the
+    // background. Request it up front so the killed-process fallback stays
+    // reliable. On Android 13+ with USE_EXACT_ALARM this is already granted and
+    // no prompt appears.
+    final canExact = await androidImpl?.canScheduleExactNotifications() ?? true;
+    if (canExact == false) {
+      await androidImpl?.requestExactAlarmsPermission();
+    }
   }
 
-  /// Schedule a notification to fire after [remainingSeconds].
-  /// [soundFile] must match one of the keys in [_soundChannels].
-  /// [isPomodoro] controls the notification text.
-  Future<void> scheduleCompletion({
-    required int remainingSeconds,
-    required String soundFile,
-    required bool isPomodoro,
-  }) async {
-    await cancel();
-
+  /// Builds the completion (sound) notification details for [soundFile].
+  NotificationDetails _completionDetails(String soundFile) {
     final (channelId, rawName) =
         _soundChannels[soundFile] ?? _soundChannels['beep.wav']!;
-
-    final scheduledTime =
-        tz.TZDateTime.now(tz.local).add(Duration(seconds: remainingSeconds));
-
-    final details = NotificationDetails(
+    return NotificationDetails(
       android: AndroidNotificationDetails(
         channelId,
         'Timer Alerts',
@@ -118,15 +119,30 @@ class NotificationService {
         presentBadge: false,
       ),
     );
+  }
 
+  /// Schedule the completion alert to fire after [remainingSeconds] and start
+  /// the live countdown as a foreground service.
+  /// [soundFile] must match one of the keys in [_soundChannels].
+  /// [isPomodoro] controls the notification text.
+  Future<void> scheduleCompletion({
+    required int remainingSeconds,
+    required String soundFile,
+    required bool isPomodoro,
+  }) async {
+    await cancel();
+
+    final scheduledTime =
+        tz.TZDateTime.now(tz.local).add(Duration(seconds: remainingSeconds));
+    final details = _completionDetails(soundFile);
     final title = isPomodoro ? 'Pomodoro complete! 🍅' : 'Break over! ☕';
     final body = isPomodoro ? 'Time for a break.' : 'Time to focus!';
 
-    // alarmClock (AlarmManager.setAlarmClock) fires at the exact time even under
-    // Doze / battery saver — the most reliable mode for a timer. The plugin still
-    // requires exact-alarm capability for this mode and throws if it's missing,
-    // so if that happens we fall back to an inexact alarm: it may be delayed by
-    // Doze, but a late alert beats a silent one.
+    // Backup alarm: fires the completion sound even if the OS kills our process
+    // (foreground service gone). alarmClock (AlarmManager.setAlarmClock) is
+    // exact and fires even under Doze; the plugin requires exact-alarm
+    // capability for it and throws otherwise, so we fall back to an inexact
+    // alarm — a late alert beats a silent one.
     final scheduled = await _schedule(
         scheduledTime, title, body, details, AndroidScheduleMode.alarmClock);
     if (!scheduled) {
@@ -134,43 +150,81 @@ class NotificationService {
           AndroidScheduleMode.inexactAllowWhileIdle);
     }
 
-    // Show the live countdown now. It shares [_timerId] with the scheduled
-    // completion above, so when the timer ends the completion notification
-    // replaces this one automatically. Android renders the countdown natively
-    // from [when], so it keeps ticking even if the app is closed.
-    await _showCountdown(scheduledTime, isPomodoro);
+    // Primary path: run the live countdown as a foreground service. This keeps
+    // our process alive so the Dart timer keeps ticking while the app is in the
+    // background and can fire the completion sound itself (see
+    // TimerNotifier._onPhaseComplete), instead of relying on the OEM to honor
+    // the alarm. It shares [_timerId] with the scheduled completion so the alert
+    // replaces the countdown when it ends.
+    await _startCountdownService(scheduledTime, isPomodoro);
   }
 
-  /// Posts an ongoing notification whose chronometer counts down to
-  /// [scheduledTime], shown while the timer runs (Android only).
-  Future<void> _showCountdown(
-      tz.TZDateTime scheduledTime, bool isPomodoro) async {
+  /// Posts the completion alert immediately. Used when the timer reaches zero
+  /// while the app is backgrounded but our process is still alive (kept alive by
+  /// the foreground service). Cancels the countdown service and the pending
+  /// backup alarm first so nothing double-fires.
+  Future<void> showCompletionNow({
+    required String soundFile,
+    required bool isPomodoro,
+  }) async {
+    await cancel();
+    final title = isPomodoro ? 'Pomodoro complete! 🍅' : 'Break over! ☕';
+    final body = isPomodoro ? 'Time for a break.' : 'Time to focus!';
     try {
-      await _plugin.show(
+      await _plugin.show(_timerId, title, body, _completionDetails(soundFile));
+    } catch (e) {
+      debugPrint('NotificationService: failed to show completion: $e');
+    }
+  }
+
+  /// Runs the live countdown notification as a foreground service so the app
+  /// process (and its Dart timer) survives being backgrounded. Android renders
+  /// the countdown natively from [when], so it keeps ticking even off-screen.
+  /// Falls back to a plain ongoing notification if the service can't start.
+  Future<void> _startCountdownService(
+      tz.TZDateTime scheduledTime, bool isPomodoro) async {
+    final countdown = AndroidNotificationDetails(
+      _countdownChannelId,
+      'Timer Countdown',
+      channelDescription: 'Shows the running timer and remaining time',
+      importance: Importance.low,
+      priority: Priority.low,
+      playSound: false,
+      enableVibration: false,
+      ongoing: true,
+      autoCancel: false,
+      onlyAlertOnce: true,
+      showWhen: true,
+      when: scheduledTime.millisecondsSinceEpoch,
+      usesChronometer: true,
+      chronometerCountDown: true,
+    );
+    try {
+      await _android?.startForegroundService(
         _timerId,
         isPomodoro ? 'Focusing 🍅' : 'On a break ☕',
         isPomodoro ? 'Time left in this pomodoro' : 'Time left in your break',
-        NotificationDetails(
-          android: AndroidNotificationDetails(
-            _countdownChannelId,
-            'Timer Countdown',
-            channelDescription: 'Shows the running timer and remaining time',
-            importance: Importance.low,
-            priority: Priority.low,
-            playSound: false,
-            enableVibration: false,
-            ongoing: true,
-            autoCancel: false,
-            onlyAlertOnce: true,
-            showWhen: true,
-            when: scheduledTime.millisecondsSinceEpoch,
-            usesChronometer: true,
-            chronometerCountDown: true,
-          ),
-        ),
+        notificationDetails: countdown,
+        foregroundServiceTypes: const {
+          AndroidServiceForegroundType.foregroundServiceTypeSpecialUse,
+        },
       );
     } catch (e) {
-      debugPrint('NotificationService: failed to show countdown: $e');
+      // Older OS versions / restricted configs may reject the service start;
+      // degrade to a plain ongoing notification so the countdown still shows and
+      // the backup alarm remains the alert path.
+      debugPrint('NotificationService: foreground service failed, falling back '
+          'to a plain notification: $e');
+      try {
+        await _plugin.show(
+          _timerId,
+          isPomodoro ? 'Focusing 🍅' : 'On a break ☕',
+          isPomodoro ? 'Time left in this pomodoro' : 'Time left in your break',
+          NotificationDetails(android: countdown),
+        );
+      } catch (e) {
+        debugPrint('NotificationService: failed to show countdown: $e');
+      }
     }
   }
 
@@ -201,7 +255,14 @@ class NotificationService {
     }
   }
 
+  /// Stops the countdown foreground service and cancels the pending backup
+  /// alarm / any shown notification (all share [_timerId]).
   Future<void> cancel() async {
+    try {
+      await _android?.stopForegroundService();
+    } catch (e) {
+      debugPrint('NotificationService: failed to stop foreground service: $e');
+    }
     try {
       await _plugin.cancel(_timerId);
     } catch (e) {

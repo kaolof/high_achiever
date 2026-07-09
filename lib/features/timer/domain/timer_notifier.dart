@@ -120,6 +120,10 @@ class TimerNotifier extends ChangeNotifier with WidgetsBindingObserver {
       _prefs.remove(_keyTimerStartEpoch);
       _timer?.cancel();
       _isRunning = false;
+      // Self-heal: a missed or late alarm may have left the ongoing countdown
+      // stuck counting past zero into negative time. Clear it now that we're
+      // back in the app and have detected completion.
+      _notifications.cancel();
       _audio.play(_phase == TimerPhase.pomodoro ? _pomodoroSound : _breakSound, volume: _soundVolume);
       if (_phase == TimerPhase.pomodoro) {
         _completedToday++;
@@ -259,13 +263,21 @@ class TimerNotifier extends ChangeNotifier with WidgetsBindingObserver {
     _timer?.cancel();
     _isRunning = false;
     _prefs.remove(_keyTimerStartEpoch);
-    // In the foreground, play the in-app sound and cancel the scheduled
-    // notification to avoid a duplicate alert. In the background, leave the
-    // scheduled notification alone — it is the only thing that can make sound,
-    // since audioplayers does not play reliably when the app isn't visible.
+    final soundFile =
+        _phase == TimerPhase.pomodoro ? _pomodoroSound : _breakSound;
+    // Foreground and background are mutually exclusive so we never double-sound:
+    //  - visible: stop the countdown service and play the in-app sound.
+    //  - backgrounded (kept alive by the foreground service): sound via the
+    //    high-importance notification channel, which is reliable off-screen and
+    //    replaces the countdown so it stops at zero instead of going negative.
     if (_isForeground) {
-      _notifications.cancel();
-      _audio.play(_phase == TimerPhase.pomodoro ? _pomodoroSound : _breakSound, volume: _soundVolume);
+      await _notifications.cancel();
+      _audio.play(soundFile, volume: _soundVolume);
+    } else {
+      await _notifications.showCompletionNow(
+        soundFile: soundFile,
+        isPomodoro: _phase == TimerPhase.pomodoro,
+      );
     }
 
     if (_phase == TimerPhase.pomodoro) {
