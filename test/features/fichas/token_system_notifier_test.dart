@@ -1,4 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:high_achiever/features/fichas/domain/token_backup.dart';
 import 'package:high_achiever/features/fichas/domain/token_date.dart';
 import 'package:high_achiever/features/fichas/domain/token_models.dart';
 import 'package:high_achiever/features/fichas/domain/token_repository.dart';
@@ -51,6 +52,33 @@ class _TestRepo implements TokenRepository {
   @override
   Future<void> setRewardClaimed(DateTime weekStart) async =>
       claims.add(dayKey(weekStart));
+
+  @override
+  Future<TokenBackup> exportAll() async => TokenBackup(
+    template: _template,
+    completions: [
+      for (final e in _logs.entries)
+        for (final id in e.value) CompletionEntry(day: e.key, taskId: id),
+    ],
+    claimedWeeks: claims.toList(),
+  );
+
+  @override
+  Future<void> importAll(TokenBackup backup) async {
+    _template = backup.template;
+    _logs
+      ..clear()
+      ..addAll({
+        for (final c in backup.completions)
+          c.day: {
+            ...?_logs[c.day],
+            c.taskId,
+          },
+      });
+    claims
+      ..clear()
+      ..addAll(backup.claimedWeeks);
+  }
 }
 
 /// Every read fails — models storage that's unavailable at startup.
@@ -71,6 +99,11 @@ class _ThrowingRepo implements TokenRepository {
   Future<bool> isRewardClaimed(DateTime weekStart) async => false;
   @override
   Future<void> setRewardClaimed(DateTime weekStart) async {}
+  @override
+  Future<TokenBackup> exportAll() async => throw Exception('storage down');
+  @override
+  Future<void> importAll(TokenBackup backup) async =>
+      throw Exception('storage down');
 }
 
 void main() {

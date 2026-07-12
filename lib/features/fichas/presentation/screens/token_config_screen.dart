@@ -1,6 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../../../core/constants/app_colors.dart';
+import '../../../../core/widgets/app_snack_bar.dart';
+import '../../../../core/widgets/confirm_dialog.dart';
+import '../../data/token_backup_service.dart';
+import '../../domain/token_backup.dart';
 import '../../domain/token_models.dart';
 import '../../domain/token_system_notifier.dart';
 
@@ -19,6 +23,7 @@ class TokenConfigScreen extends StatefulWidget {
 class _TokenConfigScreenState extends State<TokenConfigScreen> {
   final List<_TaskDraft> _tasks = [];
   final TextEditingController _rewardController = TextEditingController();
+  final TokenBackupService _backup = TokenBackupService();
   int _daysPerWeek = 5;
   int _weekStartDay = 1; // 1 = Monday … 7 = Sunday
   int _weeklyGoal = 18;
@@ -101,16 +106,86 @@ class _TokenConfigScreenState extends State<TokenConfigScreen> {
     );
     context.read<TokenSystemNotifier>().updateTemplate(template);
     FocusScope.of(context).unfocus();
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: const Text('Template saved'),
-        backgroundColor: AppColors.primaryContainer,
-        behavior: SnackBarBehavior.floating,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-        duration: const Duration(seconds: 2),
-      ),
-    );
+    ScaffoldMessenger.of(context).showSnackBar(_snack('Template saved'));
     Navigator.pop(context);
+  }
+
+  SnackBar _snack(String message, {bool error = false}) =>
+      appSnackBar(message: message, error: error);
+
+  // ── Backup ─────────────────────────────────────────────────────────────────
+
+  Future<void> _exportBackup() async {
+    final messenger = ScaffoldMessenger.of(context);
+    final notifier = context.read<TokenSystemNotifier>();
+    // iPad presents the share sheet as a popover and needs an anchor rect;
+    // anchor it to this screen's bounds.
+    final box = context.findRenderObject() as RenderBox?;
+    final origin = (box != null && box.hasSize)
+        ? box.localToGlobal(Offset.zero) & box.size
+        : null;
+    try {
+      final backup = await notifier.exportBackup();
+      await _backup.exportToShare(
+        backup,
+        now: DateTime.now(),
+        sharePositionOrigin: origin,
+      );
+    } catch (_) {
+      messenger.showSnackBar(_snack('Could not export backup', error: true));
+    }
+  }
+
+  Future<void> _importBackup() async {
+    final messenger = ScaffoldMessenger.of(context);
+    final navigator = Navigator.of(context);
+    final notifier = context.read<TokenSystemNotifier>();
+
+    final TokenBackup? backup;
+    try {
+      backup = await _backup.pickAndDecode();
+    } on TokenBackupFormatException catch (e) {
+      messenger.showSnackBar(_snack(e.message, error: true));
+      return;
+    } catch (_) {
+      messenger.showSnackBar(_snack('Could not read the file', error: true));
+      return;
+    }
+    if (backup == null) return; // user cancelled the picker
+    if (!mounted) return;
+
+    final confirmed = await _confirmImport(backup);
+    if (confirmed != true) return;
+
+    try {
+      await notifier.importBackup(backup);
+    } catch (_) {
+      messenger.showSnackBar(_snack('Could not import backup', error: true));
+      return;
+    }
+    if (!mounted) return;
+    messenger.showSnackBar(_snack('Backup imported'));
+    // Leave config: the local drafts still hold the old template, and the main
+    // screen reads fresh state straight from the notifier.
+    navigator.pop();
+  }
+
+  Future<bool?> _confirmImport(TokenBackup backup) {
+    final tasks = backup.template.tasks.length;
+    final completions = backup.completions.length;
+    final weeks = backup.claimedWeeks.length;
+    return showConfirmDialog(
+      context,
+      title: 'Import backup?',
+      message:
+          'This replaces your current tokens data with:\n\n'
+          '•  $tasks tasks\n'
+          '•  $completions completions logged\n'
+          '•  $weeks weeks claimed\n\n'
+          "Your current data will be lost. This can't be undone.",
+      confirmLabel: 'Import',
+      destructive: true,
+    );
   }
 
   @override
@@ -248,6 +323,37 @@ class _TokenConfigScreenState extends State<TokenConfigScreen> {
                       ),
                     ),
                   ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 24),
+
+          // ── Backup ──────────────────────────────────────────────────────
+          const _SectionLabel('BACKUP'),
+          const SizedBox(height: 10),
+          _Card(
+            padding: const EdgeInsets.all(6),
+            child: Column(
+              children: [
+                _BackupRow(
+                  icon: Icons.upload_rounded,
+                  title: 'Export backup',
+                  subtitle: 'Save your tokens to a file (Drive, email…)',
+                  onTap: _exportBackup,
+                ),
+                const Divider(
+                  height: 1,
+                  thickness: 1,
+                  indent: 12,
+                  endIndent: 12,
+                  color: AppColors.surfaceContainerLow,
+                ),
+                _BackupRow(
+                  icon: Icons.download_rounded,
+                  title: 'Import backup',
+                  subtitle: 'Restore from a file (replaces current data)',
+                  onTap: _importBackup,
                 ),
               ],
             ),
@@ -451,6 +557,73 @@ class _AddTaskRow extends StatelessWidget {
                 fontSize: 15,
                 fontWeight: FontWeight.w700,
               ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _BackupRow extends StatelessWidget {
+  final IconData icon;
+  final String title;
+  final String subtitle;
+  final VoidCallback onTap;
+
+  const _BackupRow({
+    required this.icon,
+    required this.title,
+    required this.subtitle,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(16),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
+        child: Row(
+          children: [
+            Container(
+              width: 40,
+              height: 40,
+              decoration: const BoxDecoration(
+                color: AppColors.surfaceContainerLow,
+                shape: BoxShape.circle,
+              ),
+              child: Icon(icon, color: AppColors.primary, size: 22),
+            ),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
+                    style: const TextStyle(
+                      color: AppColors.textPrimary,
+                      fontSize: 15,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    subtitle,
+                    style: const TextStyle(
+                      color: AppColors.textSecondary,
+                      fontSize: 12.5,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const Icon(
+              Icons.chevron_right_rounded,
+              color: AppColors.outlineVariant,
+              size: 22,
             ),
           ],
         ),

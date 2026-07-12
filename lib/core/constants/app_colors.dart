@@ -23,6 +23,9 @@ class AppColors {
   // Outline
   static const Color outlineVariant = Color(0xFFBCCBB8);
 
+  // Error / destructive feedback
+  static const Color error = Color(0xFFB3261E);
+
   // Legacy aliases used across widgets (kept for compat while migrating)
   static const Color background = surface;
   static const Color accent = primaryContainer;
