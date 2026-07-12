@@ -1,3 +1,4 @@
+import 'token_backup.dart';
 import 'token_models.dart';
 
 /// The contract between the token system's logic and its storage.
@@ -20,4 +21,12 @@ abstract class TokenRepository {
 
   /// Marks the reward for the week starting at [weekStart] as claimed.
   Future<void> setRewardClaimed(DateTime weekStart);
+
+  /// A full snapshot of every stored value: template, complete completion
+  /// history and all claimed weeks. Powers the "export backup" flow.
+  Future<TokenBackup> exportAll();
+
+  /// Replaces ALL stored data with [backup]. Destructive and atomic — used to
+  /// restore a backup on a fresh install.
+  Future<void> importAll(TokenBackup backup);
 }

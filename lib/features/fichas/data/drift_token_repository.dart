@@ -1,4 +1,5 @@
 import 'package:drift/drift.dart';
+import '../domain/token_backup.dart';
 import '../domain/token_date.dart';
 import '../domain/token_models.dart';
 import '../domain/token_repository.dart';
@@ -35,29 +36,32 @@ class DriftTokenRepository implements TokenRepository {
 
   @override
   Future<void> saveTemplate(TokenTemplate template) async {
-    await _db.transaction(() async {
+    await _db.transaction(() => _writeTemplate(template));
+  }
+
+  /// Writes the single settings row and replaces the task list wholesale.
+  /// Must run inside a transaction — see [saveTemplate] and [importAll].
+  Future<void> _writeTemplate(TokenTemplate template) async {
+    await _db
+        .into(_db.templateSettings)
+        .insertOnConflictUpdate(
+          TemplateSettingsCompanion.insert(
+            id: const Value(1),
+            daysPerWeek: Value(template.daysPerWeek),
+            weekStartDay: Value(template.weekStartDay),
+            weeklyGoal: Value(template.weeklyGoal),
+            reward: Value(template.reward),
+          ),
+        );
+    await _db.delete(_db.taskRows).go();
+    for (var i = 0; i < template.tasks.length; i++) {
+      final t = template.tasks[i];
       await _db
-          .into(_db.templateSettings)
-          .insertOnConflictUpdate(
-            TemplateSettingsCompanion.insert(
-              id: const Value(1),
-              daysPerWeek: Value(template.daysPerWeek),
-              weekStartDay: Value(template.weekStartDay),
-              weeklyGoal: Value(template.weeklyGoal),
-              reward: Value(template.reward),
-            ),
+          .into(_db.taskRows)
+          .insert(
+            TaskRowsCompanion.insert(id: t.id, name: t.name, position: i),
           );
-      // Replace the task list wholesale.
-      await _db.delete(_db.taskRows).go();
-      for (var i = 0; i < template.tasks.length; i++) {
-        final t = template.tasks[i];
-        await _db
-            .into(_db.taskRows)
-            .insert(
-              TaskRowsCompanion.insert(id: t.id, name: t.name, position: i),
-            );
-      }
-    });
+    }
   }
 
   @override
@@ -122,6 +126,46 @@ class DriftTokenRepository implements TokenRepository {
           WeekClaimsCompanion.insert(weekStart: dayKey(weekStart)),
           mode: InsertMode.insertOrIgnore,
         );
+  }
+
+  @override
+  Future<TokenBackup> exportAll() async {
+    final template = await loadTemplate();
+    final comps = await _db.select(_db.completions).get();
+    final claims = await _db.select(_db.weekClaims).get();
+    return TokenBackup(
+      template: template,
+      completions: [
+        for (final c in comps) CompletionEntry(day: c.day, taskId: c.taskId),
+      ],
+      claimedWeeks: [for (final c in claims) c.weekStart],
+    );
+  }
+
+  @override
+  Future<void> importAll(TokenBackup backup) async {
+    await _db.transaction(() async {
+      // Wipe the append-only logs, then reset the template (settings + tasks).
+      await _db.delete(_db.completions).go();
+      await _db.delete(_db.weekClaims).go();
+      await _writeTemplate(backup.template);
+      for (final c in backup.completions) {
+        await _db
+            .into(_db.completions)
+            .insert(
+              CompletionsCompanion.insert(day: c.day, taskId: c.taskId),
+              mode: InsertMode.insertOrIgnore,
+            );
+      }
+      for (final w in backup.claimedWeeks) {
+        await _db
+            .into(_db.weekClaims)
+            .insert(
+              WeekClaimsCompanion.insert(weekStart: w),
+              mode: InsertMode.insertOrIgnore,
+            );
+      }
+    });
   }
 
   /// Inserts the default template on first launch (no settings row yet).

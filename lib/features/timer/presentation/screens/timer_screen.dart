@@ -3,6 +3,8 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../../../core/constants/app_colors.dart';
 import '../../../../core/providers/app_settings_notifier.dart';
+import '../../../../core/widgets/app_snack_bar.dart';
+import '../../../../core/widgets/confirm_dialog.dart';
 import '../../domain/timer_notifier.dart';
 import '../widgets/timer_display.dart';
 import '../widgets/daily_goal_sheet.dart';
@@ -36,37 +38,13 @@ class _TimerScreenState extends State<TimerScreen>
   }
 
   Future<void> _confirmResetSession(BuildContext context) async {
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: AppColors.surfaceContainerLowest,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: const Text(
-          'Reset session?',
-          style: TextStyle(
-            color: AppColors.textPrimary,
-            fontWeight: FontWeight.w800,
-            fontSize: 18,
-          ),
-        ),
-        content: const Text(
+    final confirmed = await showConfirmDialog(
+      context,
+      title: 'Reset session?',
+      message:
           'This will reset your completed pomodoros to 0 and stop the current timer.',
-          style: TextStyle(color: AppColors.textSecondary, fontSize: 14),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Cancel',
-                style: TextStyle(color: AppColors.textSecondary)),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('Reset',
-                style: TextStyle(
-                    color: Colors.red, fontWeight: FontWeight.w700)),
-          ),
-        ],
-      ),
+      confirmLabel: 'Reset',
+      destructive: true,
     );
     if (confirmed == true && context.mounted) {
       context.read<TimerNotifier>().resetSession();
@@ -78,7 +56,7 @@ class _TimerScreenState extends State<TimerScreen>
     if (_timer.justCompleted) {
       final justStartedBreak = _timer.isBreak;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
+        appSnackBar(
           content: Row(
             children: [
               Text(
@@ -92,11 +70,6 @@ class _TimerScreenState extends State<TimerScreen>
               ),
             ],
           ),
-          backgroundColor: AppColors.primaryContainer,
-          behavior: SnackBarBehavior.floating,
-          shape:
-              RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-          duration: const Duration(seconds: 2),
         ),
       );
     }

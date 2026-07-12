@@ -1,4 +1,5 @@
 import 'package:flutter/foundation.dart';
+import 'token_backup.dart';
 import 'token_date.dart';
 import 'token_models.dart';
 import 'token_repository.dart';
@@ -135,5 +136,34 @@ class TokenSystemNotifier extends ChangeNotifier {
     await _reloadWeek(); // week window may shift if weekStartDay changed
     notifyListeners();
     await _repo.saveTemplate(template);
+  }
+
+  // ── Backup ────────────────────────────────────────────────────────────────
+
+  /// A full snapshot for the "export backup" flow.
+  Future<TokenBackup> exportBackup() => _repo.exportAll();
+
+  /// Restores [backup], replacing all current data, then reloads state so the
+  /// UI reflects the imported template and week immediately.
+  Future<void> importBackup(TokenBackup backup) async {
+    // [importAll] is atomic: it either commits fully or rolls back and throws,
+    // so a throw here leaves storage untouched and the caller's state valid.
+    await _repo.importAll(backup);
+    // The import is committed. From here on the data is already persisted, so a
+    // failure while refreshing in-memory state must NOT surface as "import
+    // failed" (that would mislead the UI into a data-losing re-save). Reuse the
+    // template we just wrote instead of re-querying it, and degrade a failed
+    // week reload to an empty week rather than propagating.
+    _template = backup.template;
+    try {
+      await _reloadWeek();
+    } catch (e, st) {
+      debugPrint('importBackup: week reload failed after commit: $e\n$st');
+      _today = dayOnly(DateTime.now());
+      _weekStart = weekStartFor(_today, _template.weekStartDay);
+      _weekLogs.clear();
+      _rewardClaimed = false;
+    }
+    notifyListeners();
   }
 }
