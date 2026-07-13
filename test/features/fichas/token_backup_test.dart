@@ -1,4 +1,4 @@
-import 'package:drift/drift.dart';
+import 'package:drift/drift.dart' hide isNull;
 import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:high_achiever/features/fichas/data/drift_token_repository.dart';
@@ -44,6 +44,41 @@ void main() {
         ['2026-07-06/a', '2026-07-07/b'],
       );
       expect(out.claimedWeeks, ['2026-07-06']);
+    });
+
+    test('encode → decode preserves advanced per-task limits', () {
+      const b = TokenBackup(
+        template: TokenTemplate(
+          tasks: [
+            Task(id: 'a', name: 'A', minPerWeek: 2, maxPerWeek: 3),
+            Task(id: 'b', name: 'B'), // defaults
+          ],
+          daysPerWeek: 5,
+          weekStartDay: DateTime.monday,
+          weeklyGoal: 4,
+          reward: 'x',
+        ),
+        completions: [],
+        claimedWeeks: [],
+      );
+      final out = decodeTokenBackup(
+        encodeTokenBackup(b, exportedAt: DateTime(2026, 7, 11)),
+      );
+      expect(out.template.tasks[0].minPerWeek, 2);
+      expect(out.template.tasks[0].maxPerWeek, 3);
+      expect(out.template.tasks[1].minPerWeek, isNull);
+      expect(out.template.tasks[1].maxPerWeek, isNull);
+    });
+
+    test('an older backup without per-task limits decodes to defaults', () {
+      const json =
+          '{"format":"$kTokenBackupFormat","version":1,'
+          '"template":{"daysPerWeek":5,"weekStartDay":1,"weeklyGoal":3,'
+          '"reward":"x","tasks":[{"id":"a","name":"A"}]},'
+          '"completions":[],"claimedWeeks":[]}';
+      final out = decodeTokenBackup(json);
+      expect(out.template.tasks.single.minPerWeek, isNull);
+      expect(out.template.tasks.single.maxPerWeek, isNull);
     });
 
     test('rejects non-JSON', () {

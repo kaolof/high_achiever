@@ -38,6 +38,9 @@ class _TokenConfigScreenState extends State<TokenConfigScreen> {
         _TaskDraft(
           id: task.id,
           controller: TextEditingController(text: task.name),
+          minPerWeek: task.minPerWeek,
+          maxPerWeek: task.maxPerWeek,
+          advancedOpen: task.isCustomized,
         ),
       );
     }
@@ -45,10 +48,22 @@ class _TokenConfigScreenState extends State<TokenConfigScreen> {
     _weekStartDay = t.weekStartDay;
     _weeklyGoal = t.weeklyGoal;
     _rewardController.text = t.reward;
+    _clampGoal(); // enforce the "goal ≥ sum of minimums" floor on load
   }
 
   int get _taskCount => _tasks.length;
-  int get _maxTokens => _taskCount * _daysPerWeek;
+
+  // A task's effective weekly limits while editing: null falls back to the
+  // template defaults (min 1, max = current daysPerWeek).
+  int _draftMin(_TaskDraft d) => d.minPerWeek ?? 1;
+  int _draftMax(_TaskDraft d) => d.maxPerWeek ?? _daysPerWeek;
+
+  // Max tokens = Σ effective max. Equals tasks × days when nothing's customized.
+  int get _maxTokens => _tasks.fold(0, (s, d) => s + _draftMax(d));
+
+  // The weekly goal's floor: the sum of every task's weekly minimum. Reaching
+  // the reward is impossible below this, so the goal can't be set under it.
+  int get _sumOfMins => _tasks.fold(0, (s, d) => s + _draftMin(d));
 
   @override
   void dispose() {
@@ -59,11 +74,12 @@ class _TokenConfigScreenState extends State<TokenConfigScreen> {
     super.dispose();
   }
 
-  void _addTask() => setState(
-    () => _tasks.add(
+  void _addTask() => setState(() {
+    _tasks.add(
       _TaskDraft(id: _newTaskId(), controller: TextEditingController()),
-    ),
-  );
+    );
+    _clampGoal(); // a new task adds 1 to the goal's floor (its default min)
+  });
 
   // Unique across sessions. An id derived from the task count could be reused
   // after a delete, colliding with an existing task's completions (shared
@@ -80,11 +96,36 @@ class _TokenConfigScreenState extends State<TokenConfigScreen> {
 
   void _setDaysPerWeek(int v) => setState(() {
     _daysPerWeek = v;
+    // A task whose max follows the days (maxPerWeek == null) may now have a
+    // pinned min above the shrunken cap — pull the min back down to stay valid.
+    for (final d in _tasks) {
+      final maxV = _draftMax(d);
+      if (_draftMin(d) > maxV) d.minPerWeek = maxV == 1 ? null : maxV;
+    }
     _clampGoal();
   });
 
+  // Collapsing only hides the steppers — it must NOT discard the values the
+  // user entered. Overrides are kept until saved (or reset via the steppers).
+  void _toggleAdvanced(_TaskDraft d) =>
+      setState(() => d.advancedOpen = !d.advancedOpen);
+
+  void _setTaskMin(_TaskDraft d, int v) => setState(() {
+    d.minPerWeek = v;
+    _clampGoal(); // raising a task's min may lift the goal's floor
+  });
+
+  void _setTaskMax(_TaskDraft d, int v) => setState(() {
+    d.maxPerWeek = v;
+    _clampGoal();
+  });
+
+  // Keep the goal within [Σ mins, maxTokens]. The floor auto-raises the goal
+  // when task minimums grow; the goal can still be set higher than the floor.
   void _clampGoal() {
-    _weeklyGoal = _weeklyGoal.clamp(1, _maxTokens == 0 ? 1 : _maxTokens);
+    final floor = _sumOfMins;
+    final ceil = _maxTokens < floor ? floor : _maxTokens;
+    _weeklyGoal = _weeklyGoal.clamp(floor, ceil);
   }
 
   void _save() {
@@ -95,13 +136,23 @@ class _TokenConfigScreenState extends State<TokenConfigScreen> {
           name: d.controller.text.trim().isEmpty
               ? 'Untitled'
               : d.controller.text.trim(),
+          // Persist an override only when it differs from the defaults, so a
+          // non-customized task keeps tracking daysPerWeek.
+          minPerWeek: _draftMin(d) == 1 ? null : _draftMin(d),
+          maxPerWeek: _draftMax(d) == _daysPerWeek ? null : _draftMax(d),
         ),
     ];
+    final maxTokens = tasks.fold(
+      0,
+      (s, t) => s + t.effectiveMax(_daysPerWeek),
+    );
+    // Goal floor = Σ task minimums; ceiling = Σ task maximums.
+    final sumMins = tasks.fold(0, (s, t) => s + t.effectiveMin);
     final template = TokenTemplate(
       tasks: tasks,
       daysPerWeek: _daysPerWeek,
       weekStartDay: _weekStartDay,
-      weeklyGoal: _weeklyGoal.clamp(1, tasks.length * _daysPerWeek),
+      weeklyGoal: _weeklyGoal.clamp(sumMins, maxTokens < sumMins ? sumMins : maxTokens),
       reward: _rewardController.text.trim(),
     );
     context.read<TokenSystemNotifier>().updateTemplate(template);
@@ -224,6 +275,13 @@ class _TokenConfigScreenState extends State<TokenConfigScreen> {
                     controller: _tasks[i].controller,
                     canDelete: _tasks.length > 1,
                     onDelete: () => _removeTask(i),
+                    advancedOpen: _tasks[i].advancedOpen,
+                    min: _draftMin(_tasks[i]),
+                    max: _draftMax(_tasks[i]),
+                    days: _daysPerWeek,
+                    onToggleAdvanced: () => _toggleAdvanced(_tasks[i]),
+                    onMinChanged: (v) => _setTaskMin(_tasks[i], v),
+                    onMaxChanged: (v) => _setTaskMax(_tasks[i], v),
                   ),
                   const Divider(
                     height: 1,
@@ -283,10 +341,25 @@ class _TokenConfigScreenState extends State<TokenConfigScreen> {
                 _RowStepper(
                   label: 'Weekly goal',
                   value: _weeklyGoal,
-                  min: 1,
-                  max: _maxTokens == 0 ? 1 : _maxTokens,
+                  min: _sumOfMins,
+                  max: _maxTokens == 0 ? _sumOfMins : _maxTokens,
                   suffix: ' / $_maxTokens',
                   onChanged: (v) => setState(() => _weeklyGoal = v),
+                ),
+                const SizedBox(height: 8),
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: Text(
+                    _weeklyGoal <= _sumOfMins
+                        ? 'Minimum $_sumOfMins = sum of every task’s weekly minimum.'
+                        : 'Floor is $_sumOfMins (sum of task minimums); '
+                              'you’re asking for ${_weeklyGoal - _sumOfMins} extra.',
+                    style: const TextStyle(
+                      color: AppColors.textSecondary,
+                      fontSize: 12,
+                      height: 1.3,
+                    ),
+                  ),
                 ),
                 const SizedBox(height: 16),
                 TextField(
@@ -370,7 +443,17 @@ class _TokenConfigScreenState extends State<TokenConfigScreen> {
 class _TaskDraft {
   final String id;
   final TextEditingController controller;
-  _TaskDraft({required this.id, required this.controller});
+  // null = follows template defaults; concrete = advanced override.
+  int? minPerWeek;
+  int? maxPerWeek;
+  bool advancedOpen;
+  _TaskDraft({
+    required this.id,
+    required this.controller,
+    this.minPerWeek,
+    this.maxPerWeek,
+    this.advancedOpen = false,
+  });
 }
 
 // ── Live "max tokens" banner ─────────────────────────────────────────────────
@@ -422,7 +505,7 @@ class _MaxBanner extends StatelessWidget {
           ),
           const Spacer(),
           Text(
-            '$tasks tasks\n× $days days',
+            '$tasks tasks\nup to $days×/wk',
             textAlign: TextAlign.right,
             style: const TextStyle(
               color: AppColors.primary,
@@ -482,56 +565,193 @@ class _TaskEditRow extends StatelessWidget {
   final TextEditingController controller;
   final bool canDelete;
   final VoidCallback onDelete;
+  final bool advancedOpen;
+  final int min;
+  final int max;
+  final int days;
+  final VoidCallback onToggleAdvanced;
+  final ValueChanged<int> onMinChanged;
+  final ValueChanged<int> onMaxChanged;
 
   const _TaskEditRow({
     required this.controller,
     required this.canDelete,
     required this.onDelete,
+    required this.advancedOpen,
+    required this.min,
+    required this.max,
+    required this.days,
+    required this.onToggleAdvanced,
+    required this.onMinChanged,
+    required this.onMaxChanged,
   });
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.only(left: 16, right: 6),
-      child: Row(
-        children: [
-          const Icon(
-            Icons.drag_indicator_rounded,
-            color: AppColors.outlineVariant,
-            size: 20,
-          ),
-          const SizedBox(width: 8),
-          Expanded(
-            child: TextField(
-              controller: controller,
-              cursorColor: AppColors.primary,
-              style: const TextStyle(
-                color: AppColors.textPrimary,
-                fontSize: 16,
-                fontWeight: FontWeight.w600,
+    return Column(
+      children: [
+        Padding(
+          padding: const EdgeInsets.only(left: 16, right: 6),
+          child: Row(
+            children: [
+              const Icon(
+                Icons.drag_indicator_rounded,
+                color: AppColors.outlineVariant,
+                size: 20,
               ),
-              decoration: const InputDecoration(
-                isDense: true,
-                hintText: 'Task name',
-                hintStyle: TextStyle(color: AppColors.textSecondary),
-                border: InputBorder.none,
-                contentPadding: EdgeInsets.symmetric(vertical: 16),
+              const SizedBox(width: 8),
+              Expanded(
+                child: TextField(
+                  controller: controller,
+                  cursorColor: AppColors.primary,
+                  style: const TextStyle(
+                    color: AppColors.textPrimary,
+                    fontSize: 16,
+                    fontWeight: FontWeight.w600,
+                  ),
+                  decoration: const InputDecoration(
+                    isDense: true,
+                    hintText: 'Task name',
+                    hintStyle: TextStyle(color: AppColors.textSecondary),
+                    border: InputBorder.none,
+                    contentPadding: EdgeInsets.symmetric(vertical: 16),
+                  ),
+                ),
               ),
-            ),
+              IconButton(
+                onPressed: canDelete ? onDelete : null,
+                icon: Icon(
+                  Icons.remove_circle_outline_rounded,
+                  color: canDelete
+                      ? AppColors.textSecondary
+                      : AppColors.outlineVariant,
+                  size: 20,
+                ),
+              ),
+            ],
           ),
-          IconButton(
-            onPressed: canDelete ? onDelete : null,
-            icon: Icon(
-              Icons.remove_circle_outline_rounded,
-              color: canDelete
-                  ? AppColors.textSecondary
-                  : AppColors.outlineVariant,
-              size: 20,
-            ),
-          ),
-        ],
-      ),
+        ),
+        _AdvancedTaskSection(
+          open: advancedOpen,
+          min: min,
+          max: max,
+          days: days,
+          onToggle: onToggleAdvanced,
+          onMinChanged: onMinChanged,
+          onMaxChanged: onMaxChanged,
+        ),
+      ],
     );
+  }
+}
+
+/// Collapsible per-task advanced editor: min/max times per week. Collapsed it's
+/// a single "Weekly limits" toggle; open it reveals two steppers.
+class _AdvancedTaskSection extends StatelessWidget {
+  final bool open;
+  final int min;
+  final int max;
+  final int days;
+  final VoidCallback onToggle;
+  final ValueChanged<int> onMinChanged;
+  final ValueChanged<int> onMaxChanged;
+
+  const _AdvancedTaskSection({
+    required this.open,
+    required this.min,
+    required this.max,
+    required this.days,
+    required this.onToggle,
+    required this.onMinChanged,
+    required this.onMaxChanged,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    // "Customized" = the user overrode a default (min 1, max daysPerWeek).
+    final customized = min != 1 || max != days;
+    final label = open
+        ? 'Weekly limits'
+        : (customized
+              ? 'Weekly limits · min $min, max $max'
+              : 'Advanced · weekly limits');
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        InkWell(
+          onTap: onToggle,
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(44, 0, 12, 10),
+            child: Row(
+              children: [
+                Icon(
+                  open
+                      ? Icons.keyboard_arrow_down_rounded
+                      : Icons.keyboard_arrow_right_rounded,
+                  color: AppColors.primary,
+                  size: 20,
+                ),
+                const SizedBox(width: 4),
+                Expanded(
+                  child: Text(
+                    label,
+                    style: const TextStyle(
+                      color: AppColors.primary,
+                      fontSize: 12.5,
+                      fontWeight: FontWeight.w700,
+                      letterSpacing: 0.2,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+        if (open)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(44, 0, 16, 14),
+            child: Column(
+              children: [
+                _RowStepper(
+                  label: 'Min per week',
+                  value: min,
+                  min: 1,
+                  max: max,
+                  onChanged: onMinChanged,
+                ),
+                const SizedBox(height: 8),
+                _RowStepper(
+                  label: 'Max per week',
+                  value: max,
+                  min: min,
+                  max: 7,
+                  onChanged: onMaxChanged,
+                ),
+                const SizedBox(height: 8),
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: Text(
+                    _hint(),
+                    style: const TextStyle(
+                      color: AppColors.textSecondary,
+                      fontSize: 12,
+                      height: 1.3,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+      ],
+    );
+  }
+
+  String _hint() {
+    final minPart = min <= 1
+        ? 'at least once'
+        : 'at least $min× per week';
+    return 'Reward needs this $minPart, and it caps at $max× '
+        '(default: 1× to $days×).';
   }
 }
 

@@ -106,6 +106,17 @@ class _ThrowingRepo implements TokenRepository {
       throw Exception('storage down');
 }
 
+/// An in-week day that isn't today, so a test can seed prior-day completions
+/// without depending on which weekday the suite runs on.
+DateTime _otherWeekDay(DateTime today, int weekStartDay) {
+  final ws = weekStartFor(today, weekStartDay);
+  for (var i = 0; i < 7; i++) {
+    final d = DateTime(ws.year, ws.month, ws.day + i);
+    if (d != today) return d;
+  }
+  return today; // unreachable: a 7-day week always has another day
+}
+
 void main() {
   const template = TokenTemplate(
     tasks: [
@@ -122,7 +133,7 @@ void main() {
   );
 
   test(
-    'toggling tasks tracks tokens and crosses the unlock threshold',
+    'reward stays locked until the goal is met AND every task is done ≥1×',
     () async {
       final n = TokenSystemNotifier(_TestRepo(template, {}));
       await pumpEventQueue();
@@ -137,19 +148,23 @@ void main() {
       expect(n.weeklyEarned, 2);
       expect(n.toGo, 1);
 
-      // Reaching the goal returns true exactly once (the unlock transition).
-      expect(await n.toggleTask('t3'), isTrue);
-      expect(n.rewardUnlocked, isTrue);
-      expect(n.toGo, 0);
-
-      // A further completion does NOT re-fire the unlock.
-      expect(await n.toggleTask('t4'), isFalse);
-      expect(n.weeklyEarned, 4);
-
-      // Undoing drops back below the goal.
-      expect(await n.toggleTask('t4'), isFalse);
+      // The aggregate goal (3) is met here, but t4/t5 are still at 0, so the
+      // per-task minimum gate keeps the reward locked — no unlock crossing.
       expect(await n.toggleTask('t3'), isFalse);
-      expect(n.weeklyEarned, 2);
+      expect(n.goalReached, isTrue);
+      expect(n.rewardUnlocked, isFalse);
+      expect(n.tasksBelowMin.map((t) => t.id), ['t4', 't5']);
+
+      expect(await n.toggleTask('t4'), isFalse); // still missing t5
+
+      // Completing the last remaining task crosses into unlocked exactly once.
+      expect(await n.toggleTask('t5'), isTrue);
+      expect(n.rewardUnlocked, isTrue);
+      expect(n.tasksBelowMin, isEmpty);
+
+      // A no-op re-toggle path: undoing one drops back to locked.
+      expect(await n.toggleTask('t5'), isFalse);
+      expect(n.weeklyEarned, 4);
       expect(n.rewardUnlocked, isFalse);
     },
   );
@@ -218,4 +233,96 @@ void main() {
       expect(n.weeklyEarned, 0);
     },
   );
+
+  test('a customized task must reach its weekly minimum to unlock', () async {
+    final today = dayOnly(DateTime.now());
+    final other = _otherWeekDay(today, DateTime.monday);
+    const tmpl = TokenTemplate(
+      tasks: [
+        Task(id: 'a', name: 'A', minPerWeek: 2, maxPerWeek: 3),
+        Task(id: 'b', name: 'B'),
+        Task(id: 'c', name: 'C'),
+      ],
+      daysPerWeek: 3,
+      weekStartDay: DateTime.monday,
+      weeklyGoal: 3,
+      reward: 'x',
+    );
+    final n = TokenSystemNotifier(
+      _TestRepo(tmpl, {
+        dayKey(other): {'a', 'b', 'c'},
+      }),
+    );
+    await pumpEventQueue();
+
+    // Goal reached and every task done once — but 'a' needs 2×, so still locked.
+    expect(n.goalReached, isTrue);
+    expect(n.rewardUnlocked, isFalse);
+    expect(n.tasksBelowMin.map((t) => t.id), ['a']);
+
+    // Completing 'a' a second day (today) meets its minimum → unlock.
+    expect(await n.toggleTask('a'), isTrue);
+    expect(n.weekCount('a'), 2);
+    expect(n.rewardUnlocked, isTrue);
+  });
+
+  test('the weekly max hard-blocks further completions', () async {
+    final today = dayOnly(DateTime.now());
+    final ws = weekStartFor(today, DateTime.monday);
+    final otherDays = [
+      for (var i = 0; i < 7; i++) DateTime(ws.year, ws.month, ws.day + i),
+    ].where((d) => d != today).take(2).toList();
+
+    const tmpl = TokenTemplate(
+      tasks: [Task(id: 'a', name: 'A', maxPerWeek: 2), Task(id: 'b', name: 'B')],
+      daysPerWeek: 5,
+      weekStartDay: DateTime.monday,
+      weeklyGoal: 2,
+      reward: 'x',
+    );
+    final n = TokenSystemNotifier(
+      _TestRepo(tmpl, {for (final d in otherDays) dayKey(d): {'a'}}),
+    );
+    await pumpEventQueue();
+
+    expect(n.weekCount('a'), 2);
+    expect(n.maxFor('a'), 2);
+    expect(n.isBlockedToday('a'), isTrue);
+
+    // Completing 'a' again today is a no-op: the weekly cap is reached.
+    expect(await n.toggleTask('a'), isFalse);
+    expect(n.isDoneToday('a'), isFalse);
+    expect(n.weekCount('a'), 2);
+
+    // 'b' (uncapped default) is never blocked.
+    expect(n.isBlockedToday('b'), isFalse);
+  });
+
+  test('weeklyMax and weeklyEarned respect per-task caps', () async {
+    final today = dayOnly(DateTime.now());
+    final ws = weekStartFor(today, DateTime.monday);
+    final days = [
+      for (var i = 0; i < 7; i++) DateTime(ws.year, ws.month, ws.day + i),
+    ];
+    const tmpl = TokenTemplate(
+      tasks: [Task(id: 'a', name: 'A', maxPerWeek: 2), Task(id: 'b', name: 'B')],
+      daysPerWeek: 5,
+      weekStartDay: DateTime.monday,
+      weeklyGoal: 2,
+      reward: 'x',
+    );
+    // 'a' completed on 3 distinct days but its weekly cap is 2.
+    final n = TokenSystemNotifier(
+      _TestRepo(tmpl, {
+        dayKey(days[0]): {'a'},
+        dayKey(days[1]): {'a'},
+        dayKey(days[2]): {'a'},
+      }),
+    );
+    await pumpEventQueue();
+
+    expect(n.weeklyMax, 7); // a caps at 2, b defaults to 5
+    expect(n.weekCount('a'), 3);
+    expect(n.weeklyEarned, 2); // a's 3 completions count only up to its cap
+  });
 }

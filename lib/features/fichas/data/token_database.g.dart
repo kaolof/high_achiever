@@ -390,8 +390,36 @@ class $TaskRowsTable extends TaskRows with TableInfo<$TaskRowsTable, TaskRow> {
     type: DriftSqlType.int,
     requiredDuringInsert: true,
   );
+  static const VerificationMeta _minPerWeekMeta = const VerificationMeta(
+    'minPerWeek',
+  );
   @override
-  List<GeneratedColumn> get $columns => [id, name, position];
+  late final GeneratedColumn<int> minPerWeek = GeneratedColumn<int>(
+    'min_per_week',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _maxPerWeekMeta = const VerificationMeta(
+    'maxPerWeek',
+  );
+  @override
+  late final GeneratedColumn<int> maxPerWeek = GeneratedColumn<int>(
+    'max_per_week',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    id,
+    name,
+    position,
+    minPerWeek,
+    maxPerWeek,
+  ];
   @override
   String get aliasedName => _alias ?? actualTableName;
   @override
@@ -425,6 +453,24 @@ class $TaskRowsTable extends TaskRows with TableInfo<$TaskRowsTable, TaskRow> {
     } else if (isInserting) {
       context.missing(_positionMeta);
     }
+    if (data.containsKey('min_per_week')) {
+      context.handle(
+        _minPerWeekMeta,
+        minPerWeek.isAcceptableOrUnknown(
+          data['min_per_week']!,
+          _minPerWeekMeta,
+        ),
+      );
+    }
+    if (data.containsKey('max_per_week')) {
+      context.handle(
+        _maxPerWeekMeta,
+        maxPerWeek.isAcceptableOrUnknown(
+          data['max_per_week']!,
+          _maxPerWeekMeta,
+        ),
+      );
+    }
     return context;
   }
 
@@ -446,6 +492,14 @@ class $TaskRowsTable extends TaskRows with TableInfo<$TaskRowsTable, TaskRow> {
         DriftSqlType.int,
         data['${effectivePrefix}position'],
       )!,
+      minPerWeek: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}min_per_week'],
+      ),
+      maxPerWeek: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}max_per_week'],
+      ),
     );
   }
 
@@ -459,13 +513,27 @@ class TaskRow extends DataClass implements Insertable<TaskRow> {
   final String id;
   final String name;
   final int position;
-  const TaskRow({required this.id, required this.name, required this.position});
+  final int? minPerWeek;
+  final int? maxPerWeek;
+  const TaskRow({
+    required this.id,
+    required this.name,
+    required this.position,
+    this.minPerWeek,
+    this.maxPerWeek,
+  });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
     final map = <String, Expression>{};
     map['id'] = Variable<String>(id);
     map['name'] = Variable<String>(name);
     map['position'] = Variable<int>(position);
+    if (!nullToAbsent || minPerWeek != null) {
+      map['min_per_week'] = Variable<int>(minPerWeek);
+    }
+    if (!nullToAbsent || maxPerWeek != null) {
+      map['max_per_week'] = Variable<int>(maxPerWeek);
+    }
     return map;
   }
 
@@ -474,6 +542,12 @@ class TaskRow extends DataClass implements Insertable<TaskRow> {
       id: Value(id),
       name: Value(name),
       position: Value(position),
+      minPerWeek: minPerWeek == null && nullToAbsent
+          ? const Value.absent()
+          : Value(minPerWeek),
+      maxPerWeek: maxPerWeek == null && nullToAbsent
+          ? const Value.absent()
+          : Value(maxPerWeek),
     );
   }
 
@@ -486,6 +560,8 @@ class TaskRow extends DataClass implements Insertable<TaskRow> {
       id: serializer.fromJson<String>(json['id']),
       name: serializer.fromJson<String>(json['name']),
       position: serializer.fromJson<int>(json['position']),
+      minPerWeek: serializer.fromJson<int?>(json['minPerWeek']),
+      maxPerWeek: serializer.fromJson<int?>(json['maxPerWeek']),
     );
   }
   @override
@@ -495,19 +571,35 @@ class TaskRow extends DataClass implements Insertable<TaskRow> {
       'id': serializer.toJson<String>(id),
       'name': serializer.toJson<String>(name),
       'position': serializer.toJson<int>(position),
+      'minPerWeek': serializer.toJson<int?>(minPerWeek),
+      'maxPerWeek': serializer.toJson<int?>(maxPerWeek),
     };
   }
 
-  TaskRow copyWith({String? id, String? name, int? position}) => TaskRow(
+  TaskRow copyWith({
+    String? id,
+    String? name,
+    int? position,
+    Value<int?> minPerWeek = const Value.absent(),
+    Value<int?> maxPerWeek = const Value.absent(),
+  }) => TaskRow(
     id: id ?? this.id,
     name: name ?? this.name,
     position: position ?? this.position,
+    minPerWeek: minPerWeek.present ? minPerWeek.value : this.minPerWeek,
+    maxPerWeek: maxPerWeek.present ? maxPerWeek.value : this.maxPerWeek,
   );
   TaskRow copyWithCompanion(TaskRowsCompanion data) {
     return TaskRow(
       id: data.id.present ? data.id.value : this.id,
       name: data.name.present ? data.name.value : this.name,
       position: data.position.present ? data.position.value : this.position,
+      minPerWeek: data.minPerWeek.present
+          ? data.minPerWeek.value
+          : this.minPerWeek,
+      maxPerWeek: data.maxPerWeek.present
+          ? data.maxPerWeek.value
+          : this.maxPerWeek,
     );
   }
 
@@ -516,37 +608,47 @@ class TaskRow extends DataClass implements Insertable<TaskRow> {
     return (StringBuffer('TaskRow(')
           ..write('id: $id, ')
           ..write('name: $name, ')
-          ..write('position: $position')
+          ..write('position: $position, ')
+          ..write('minPerWeek: $minPerWeek, ')
+          ..write('maxPerWeek: $maxPerWeek')
           ..write(')'))
         .toString();
   }
 
   @override
-  int get hashCode => Object.hash(id, name, position);
+  int get hashCode => Object.hash(id, name, position, minPerWeek, maxPerWeek);
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
       (other is TaskRow &&
           other.id == this.id &&
           other.name == this.name &&
-          other.position == this.position);
+          other.position == this.position &&
+          other.minPerWeek == this.minPerWeek &&
+          other.maxPerWeek == this.maxPerWeek);
 }
 
 class TaskRowsCompanion extends UpdateCompanion<TaskRow> {
   final Value<String> id;
   final Value<String> name;
   final Value<int> position;
+  final Value<int?> minPerWeek;
+  final Value<int?> maxPerWeek;
   final Value<int> rowid;
   const TaskRowsCompanion({
     this.id = const Value.absent(),
     this.name = const Value.absent(),
     this.position = const Value.absent(),
+    this.minPerWeek = const Value.absent(),
+    this.maxPerWeek = const Value.absent(),
     this.rowid = const Value.absent(),
   });
   TaskRowsCompanion.insert({
     required String id,
     required String name,
     required int position,
+    this.minPerWeek = const Value.absent(),
+    this.maxPerWeek = const Value.absent(),
     this.rowid = const Value.absent(),
   }) : id = Value(id),
        name = Value(name),
@@ -555,12 +657,16 @@ class TaskRowsCompanion extends UpdateCompanion<TaskRow> {
     Expression<String>? id,
     Expression<String>? name,
     Expression<int>? position,
+    Expression<int>? minPerWeek,
+    Expression<int>? maxPerWeek,
     Expression<int>? rowid,
   }) {
     return RawValuesInsertable({
       if (id != null) 'id': id,
       if (name != null) 'name': name,
       if (position != null) 'position': position,
+      if (minPerWeek != null) 'min_per_week': minPerWeek,
+      if (maxPerWeek != null) 'max_per_week': maxPerWeek,
       if (rowid != null) 'rowid': rowid,
     });
   }
@@ -569,12 +675,16 @@ class TaskRowsCompanion extends UpdateCompanion<TaskRow> {
     Value<String>? id,
     Value<String>? name,
     Value<int>? position,
+    Value<int?>? minPerWeek,
+    Value<int?>? maxPerWeek,
     Value<int>? rowid,
   }) {
     return TaskRowsCompanion(
       id: id ?? this.id,
       name: name ?? this.name,
       position: position ?? this.position,
+      minPerWeek: minPerWeek ?? this.minPerWeek,
+      maxPerWeek: maxPerWeek ?? this.maxPerWeek,
       rowid: rowid ?? this.rowid,
     );
   }
@@ -591,6 +701,12 @@ class TaskRowsCompanion extends UpdateCompanion<TaskRow> {
     if (position.present) {
       map['position'] = Variable<int>(position.value);
     }
+    if (minPerWeek.present) {
+      map['min_per_week'] = Variable<int>(minPerWeek.value);
+    }
+    if (maxPerWeek.present) {
+      map['max_per_week'] = Variable<int>(maxPerWeek.value);
+    }
     if (rowid.present) {
       map['rowid'] = Variable<int>(rowid.value);
     }
@@ -603,6 +719,8 @@ class TaskRowsCompanion extends UpdateCompanion<TaskRow> {
           ..write('id: $id, ')
           ..write('name: $name, ')
           ..write('position: $position, ')
+          ..write('minPerWeek: $minPerWeek, ')
+          ..write('maxPerWeek: $maxPerWeek, ')
           ..write('rowid: $rowid')
           ..write(')'))
         .toString();
@@ -1215,6 +1333,8 @@ typedef $$TaskRowsTableCreateCompanionBuilder =
       required String id,
       required String name,
       required int position,
+      Value<int?> minPerWeek,
+      Value<int?> maxPerWeek,
       Value<int> rowid,
     });
 typedef $$TaskRowsTableUpdateCompanionBuilder =
@@ -1222,6 +1342,8 @@ typedef $$TaskRowsTableUpdateCompanionBuilder =
       Value<String> id,
       Value<String> name,
       Value<int> position,
+      Value<int?> minPerWeek,
+      Value<int?> maxPerWeek,
       Value<int> rowid,
     });
 
@@ -1246,6 +1368,16 @@ class $$TaskRowsTableFilterComposer
 
   ColumnFilters<int> get position => $composableBuilder(
     column: $table.position,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get minPerWeek => $composableBuilder(
+    column: $table.minPerWeek,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get maxPerWeek => $composableBuilder(
+    column: $table.maxPerWeek,
     builder: (column) => ColumnFilters(column),
   );
 }
@@ -1273,6 +1405,16 @@ class $$TaskRowsTableOrderingComposer
     column: $table.position,
     builder: (column) => ColumnOrderings(column),
   );
+
+  ColumnOrderings<int> get minPerWeek => $composableBuilder(
+    column: $table.minPerWeek,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get maxPerWeek => $composableBuilder(
+    column: $table.maxPerWeek,
+    builder: (column) => ColumnOrderings(column),
+  );
 }
 
 class $$TaskRowsTableAnnotationComposer
@@ -1292,6 +1434,16 @@ class $$TaskRowsTableAnnotationComposer
 
   GeneratedColumn<int> get position =>
       $composableBuilder(column: $table.position, builder: (column) => column);
+
+  GeneratedColumn<int> get minPerWeek => $composableBuilder(
+    column: $table.minPerWeek,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<int> get maxPerWeek => $composableBuilder(
+    column: $table.maxPerWeek,
+    builder: (column) => column,
+  );
 }
 
 class $$TaskRowsTableTableManager
@@ -1325,11 +1477,15 @@ class $$TaskRowsTableTableManager
                 Value<String> id = const Value.absent(),
                 Value<String> name = const Value.absent(),
                 Value<int> position = const Value.absent(),
+                Value<int?> minPerWeek = const Value.absent(),
+                Value<int?> maxPerWeek = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => TaskRowsCompanion(
                 id: id,
                 name: name,
                 position: position,
+                minPerWeek: minPerWeek,
+                maxPerWeek: maxPerWeek,
                 rowid: rowid,
               ),
           createCompanionCallback:
@@ -1337,11 +1493,15 @@ class $$TaskRowsTableTableManager
                 required String id,
                 required String name,
                 required int position,
+                Value<int?> minPerWeek = const Value.absent(),
+                Value<int?> maxPerWeek = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => TaskRowsCompanion.insert(
                 id: id,
                 name: name,
                 position: position,
+                minPerWeek: minPerWeek,
+                maxPerWeek: maxPerWeek,
                 rowid: rowid,
               ),
           withReferenceMapper: (p0) => p0

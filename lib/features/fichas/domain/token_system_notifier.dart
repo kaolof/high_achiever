@@ -89,29 +89,95 @@ class TokenSystemNotifier extends ChangeNotifier {
   int get todayDoneCount =>
       _todayCompleted.where(_activeTaskIds.contains).length;
 
-  int get weeklyEarned {
+  Task? _taskById(String id) {
+    for (final t in _template.tasks) {
+      if (t.id == id) return t;
+    }
+    return null;
+  }
+
+  // Distinct days this week each active task was completed. A task can be marked
+  // at most once per day, so this is exactly its weekly completion count.
+  Map<String, int> get _weekCounts {
     final active = _activeTaskIds;
-    return _weekLogs.values.fold(
-      0,
-      (sum, ids) => sum + ids.where(active.contains).length,
-    );
+    final counts = <String, int>{};
+    for (final ids in _weekLogs.values) {
+      for (final id in ids) {
+        if (active.contains(id)) counts[id] = (counts[id] ?? 0) + 1;
+      }
+    }
+    return counts;
+  }
+
+  /// How many days this week [taskId] was completed (active tasks only).
+  int weekCount(String taskId) =>
+      _activeTaskIds.contains(taskId) ? (_weekCounts[taskId] ?? 0) : 0;
+
+  /// The weekly cap for [taskId] (advanced max, or daysPerWeek by default).
+  int maxFor(String taskId) =>
+      _taskById(taskId)?.effectiveMax(_template.daysPerWeek) ?? 0;
+
+  /// The weekly minimum for [taskId] (advanced min, or 1 by default).
+  int minFor(String taskId) => _taskById(taskId)?.effectiveMin ?? 0;
+
+  // Tokens count per task only up to its weekly cap, so a task can never earn
+  // more than its max and weeklyEarned never exceeds weeklyMax.
+  int get weeklyEarned {
+    final counts = _weekCounts;
+    final days = _template.daysPerWeek;
+    var sum = 0;
+    for (final t in _template.tasks) {
+      final c = counts[t.id] ?? 0;
+      final cap = t.effectiveMax(days);
+      sum += c < cap ? c : cap;
+    }
+    return sum;
   }
 
   int get weeklyMax => _template.maxTokens;
   int get weeklyGoal => _template.weeklyGoal;
   String get reward => _template.reward;
-  bool get rewardUnlocked => weeklyEarned >= weeklyGoal;
+
+  /// Whether the aggregate token goal alone is met (before the per-task gate).
+  bool get goalReached => weeklyEarned >= weeklyGoal;
+
+  /// Active tasks that haven't reached their weekly minimum yet. Non-empty means
+  /// the reward stays locked even if [goalReached] is true.
+  List<Task> get tasksBelowMin {
+    final counts = _weekCounts;
+    return [
+      for (final t in _template.tasks)
+        if ((counts[t.id] ?? 0) < t.effectiveMin) t,
+    ];
+  }
+
+  // The reward unlocks only when BOTH the token goal is met AND every task has
+  // reached its weekly minimum (default 1, or the advanced min for customized
+  // tasks).
+  bool get rewardUnlocked => goalReached && tasksBelowMin.isEmpty;
   bool get rewardClaimed => _rewardClaimed;
   int get toGo => (weeklyGoal - weeklyEarned).clamp(0, weeklyGoal);
+
+  /// Hard cap: [taskId] can't be completed today once it has hit its weekly max
+  /// on other days. An already-done day is never blocked, so it can be undone.
+  bool isBlockedToday(String taskId) {
+    if (isDoneToday(taskId)) return false;
+    return weekCount(taskId) >= maxFor(taskId);
+  }
 
   // ── Mutations ─────────────────────────────────────────────────────────────
 
   /// Toggles a task for today. Returns true if this toggle just crossed into
   /// the "reward unlocked" state, so the UI can trigger the celebration.
+  ///
+  /// Completing a task that has already reached its weekly max is a no-op (hard
+  /// cap); undoing an existing completion is always allowed.
   Future<bool> toggleTask(String taskId) async {
-    final wasUnlocked = rewardUnlocked;
     final set = _weekLogs.putIfAbsent(dayKey(_today), () => <String>{});
     final nowCompleted = !set.contains(taskId);
+    if (nowCompleted && isBlockedToday(taskId)) return false;
+
+    final wasUnlocked = rewardUnlocked;
     if (nowCompleted) {
       set.add(taskId);
     } else {

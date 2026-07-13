@@ -77,6 +77,8 @@ class FichasScreen extends StatelessWidget {
                   goal: n.weeklyGoal,
                   toGo: n.toGo,
                   unlocked: n.rewardUnlocked,
+                  goalReached: n.goalReached,
+                  belowMinCount: n.tasksBelowMin.length,
                 ),
                 const SizedBox(height: 16),
                 GestureDetector(
@@ -98,6 +100,10 @@ class FichasScreen extends StatelessWidget {
                 _TaskList(
                   tasks: n.template.tasks,
                   isDone: n.isDoneToday,
+                  weekCount: n.weekCount,
+                  maxFor: n.maxFor,
+                  minFor: n.minFor,
+                  isBlocked: n.isBlockedToday,
                   onToggle: (id) => _toggle(context, id),
                 ),
               ],
@@ -121,6 +127,8 @@ class _WeeklySummaryCard extends StatelessWidget {
   final int goal;
   final int toGo;
   final bool unlocked;
+  final bool goalReached;
+  final int belowMinCount;
 
   const _WeeklySummaryCard({
     required this.earned,
@@ -128,7 +136,23 @@ class _WeeklySummaryCard extends StatelessWidget {
     required this.goal,
     required this.toGo,
     required this.unlocked,
+    required this.goalReached,
+    required this.belowMinCount,
   });
+
+  // The token goal is met but some task hasn't hit its weekly minimum, so the
+  // reward stays locked until those tasks are finished.
+  bool get _blockedByMin => goalReached && !unlocked && belowMinCount > 0;
+
+  String get _statusText {
+    if (unlocked) return 'Reward unlocked! 🎉';
+    if (_blockedByMin) {
+      return belowMinCount == 1
+          ? '1 task left to finish 🔒'
+          : '$belowMinCount tasks left to finish 🔒';
+    }
+    return '$toGo to go 🎁';
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -203,9 +227,13 @@ class _WeeklySummaryCard extends StatelessWidget {
                 ),
               ),
               Text(
-                unlocked ? 'Reward unlocked! 🎉' : '$toGo to go 🎁',
+                _statusText,
                 style: TextStyle(
-                  color: unlocked ? AppColors.primary : AppColors.textPrimary,
+                  color: unlocked
+                      ? AppColors.primary
+                      : (_blockedByMin
+                            ? AppColors.textSecondary
+                            : AppColors.textPrimary),
                   fontSize: 13,
                   fontWeight: FontWeight.w700,
                 ),
@@ -333,11 +361,19 @@ class _SectionHeader extends StatelessWidget {
 class _TaskList extends StatelessWidget {
   final List<Task> tasks;
   final bool Function(String id) isDone;
+  final int Function(String id) weekCount;
+  final int Function(String id) maxFor;
+  final int Function(String id) minFor;
+  final bool Function(String id) isBlocked;
   final void Function(String id) onToggle;
 
   const _TaskList({
     required this.tasks,
     required this.isDone,
+    required this.weekCount,
+    required this.maxFor,
+    required this.minFor,
+    required this.isBlocked,
     required this.onToggle,
   });
 
@@ -353,6 +389,10 @@ class _TaskList extends StatelessWidget {
             _TaskRow(
               name: tasks[i].name,
               done: isDone(tasks[i].id),
+              count: weekCount(tasks[i].id),
+              max: maxFor(tasks[i].id),
+              min: minFor(tasks[i].id),
+              blocked: isBlocked(tasks[i].id),
               onTap: () => onToggle(tasks[i].id),
             ),
             if (i != tasks.length - 1)
@@ -372,63 +412,131 @@ class _TaskList extends StatelessWidget {
 class _TaskRow extends StatelessWidget {
   final String name;
   final bool done;
+  final int count; // completions this week
+  final int max; // weekly cap
+  final int min; // weekly minimum for the reward
+  final bool blocked; // hit the weekly cap → can't complete today
   final VoidCallback onTap;
 
-  const _TaskRow({required this.name, required this.done, required this.onTap});
+  const _TaskRow({
+    required this.name,
+    required this.done,
+    required this.count,
+    required this.max,
+    required this.min,
+    required this.blocked,
+    required this.onTap,
+  });
 
   @override
   Widget build(BuildContext context) {
+    final minMet = count >= min;
     return InkWell(
-      onTap: onTap,
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
-        child: Row(
-          children: [
-            AnimatedContainer(
-              duration: const Duration(milliseconds: 180),
-              curve: Curves.easeOut,
-              width: 26,
-              height: 26,
-              decoration: BoxDecoration(
-                color: done ? AppColors.primary : Colors.transparent,
-                shape: BoxShape.circle,
-                border: done
-                    ? null
-                    : Border.all(color: AppColors.outlineVariant, width: 2),
+      // A capped-out task can't be toggled today (but a done one always can, to
+      // undo it). onTap stays null only when blocked.
+      onTap: blocked ? null : onTap,
+      child: Opacity(
+        opacity: blocked ? 0.55 : 1,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+          child: Row(
+            children: [
+              AnimatedContainer(
+                duration: const Duration(milliseconds: 180),
+                curve: Curves.easeOut,
+                width: 26,
+                height: 26,
+                decoration: BoxDecoration(
+                  color: done ? AppColors.primary : Colors.transparent,
+                  shape: BoxShape.circle,
+                  border: done
+                      ? null
+                      : Border.all(color: AppColors.outlineVariant, width: 2),
+                ),
+                child: done
+                    ? const Icon(
+                        Icons.check_rounded,
+                        color: AppColors.surfaceContainerLowest,
+                        size: 18,
+                      )
+                    : null,
               ),
-              child: done
-                  ? const Icon(
-                      Icons.check_rounded,
-                      color: AppColors.surfaceContainerLowest,
-                      size: 18,
-                    )
-                  : null,
-            ),
-            const SizedBox(width: 18),
-            Expanded(
-              child: Text(
-                name,
-                style: TextStyle(
-                  color: done ? AppColors.textSecondary : AppColors.textPrimary,
-                  fontSize: 16,
-                  fontWeight: FontWeight.w600,
-                  decoration: done ? TextDecoration.lineThrough : null,
-                  decorationColor: AppColors.textSecondary,
+              const SizedBox(width: 18),
+              Expanded(
+                child: Text(
+                  name,
+                  style: TextStyle(
+                    color: done
+                        ? AppColors.textSecondary
+                        : AppColors.textPrimary,
+                    fontSize: 16,
+                    fontWeight: FontWeight.w600,
+                    decoration: done ? TextDecoration.lineThrough : null,
+                    decorationColor: AppColors.textSecondary,
+                  ),
                 ),
               ),
-            ),
-            if (done)
-              const Text(
-                '+1',
-                style: TextStyle(
-                  color: AppColors.primary,
-                  fontSize: 13,
-                  fontWeight: FontWeight.w800,
-                ),
-              ),
-          ],
+              _WeekBadge(count: count, max: max, minMet: minMet, blocked: blocked),
+            ],
+          ),
         ),
       ),
+    );
+  }
+}
+
+/// Trailing per-task weekly progress: "count/max" this week, plus a hint of
+/// whether the task still needs completions to meet its minimum or is capped.
+class _WeekBadge extends StatelessWidget {
+  final int count;
+  final int max;
+  final bool minMet;
+  final bool blocked;
+
+  const _WeekBadge({
+    required this.count,
+    required this.max,
+    required this.minMet,
+    required this.blocked,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final color = blocked
+        ? AppColors.textSecondary
+        : (minMet ? AppColors.primary : AppColors.textSecondary);
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        if (blocked) ...[
+          const Icon(Icons.lock_rounded, size: 13, color: AppColors.textSecondary),
+          const SizedBox(width: 4),
+        ] else if (!minMet) ...[
+          const Icon(
+            Icons.priority_high_rounded,
+            size: 14,
+            color: AppColors.textSecondary,
+          ),
+          const SizedBox(width: 2),
+        ],
+        Text(
+          '$count/$max',
+          style: TextStyle(
+            color: color,
+            fontSize: 13,
+            fontWeight: FontWeight.w800,
+          ),
+        ),
+        const SizedBox(width: 2),
+        Text(
+          'wk',
+          style: TextStyle(
+            color: color.withValues(alpha: 0.7),
+            fontSize: 10,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+      ],
     );
   }
 }
