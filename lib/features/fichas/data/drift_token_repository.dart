@@ -23,7 +23,15 @@ class DriftTokenRepository implements TokenRepository {
     )..orderBy([(t) => OrderingTerm(expression: t.position)])).get();
     final tasks = rows.isEmpty
         ? _defaultTemplate().tasks
-        : [for (final r in rows) Task(id: r.id, name: r.name)];
+        : [
+            for (final r in rows)
+              Task(
+                id: r.id,
+                name: r.name,
+                minPerWeek: r.minPerWeek,
+                maxPerWeek: r.maxPerWeek,
+              ),
+          ];
 
     return TokenTemplate(
       tasks: tasks,
@@ -59,7 +67,13 @@ class DriftTokenRepository implements TokenRepository {
       await _db
           .into(_db.taskRows)
           .insert(
-            TaskRowsCompanion.insert(id: t.id, name: t.name, position: i),
+            TaskRowsCompanion.insert(
+              id: t.id,
+              name: t.name,
+              position: i,
+              minPerWeek: Value(t.minPerWeek),
+              maxPerWeek: Value(t.maxPerWeek),
+            ),
           );
     }
   }

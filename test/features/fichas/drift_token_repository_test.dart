@@ -46,6 +46,27 @@ void main() {
     expect(t.reward, 'Movie night');
   });
 
+  test('advanced per-task limits round-trip through SQLite', () async {
+    await repo.saveTemplate(
+      const TokenTemplate(
+        tasks: [
+          Task(id: 'a', name: 'A', minPerWeek: 2, maxPerWeek: 3),
+          Task(id: 'b', name: 'B'), // defaults (null/null)
+        ],
+        daysPerWeek: 5,
+        weekStartDay: DateTime.monday,
+        weeklyGoal: 4,
+        reward: 'x',
+      ),
+    );
+    final t = await repo.loadTemplate();
+    expect(t.tasks[0].minPerWeek, 2);
+    expect(t.tasks[0].maxPerWeek, 3);
+    expect(t.tasks[1].minPerWeek, isNull);
+    expect(t.tasks[1].maxPerWeek, isNull);
+    expect(t.maxTokens, 3 + 5); // a caps at 3, b defaults to 5 days
+  });
+
   test(
     'completions count only within the week window, no double count',
     () async {

@@ -19,10 +19,14 @@ class TemplateSettings extends Table {
 }
 
 /// The fixed daily tasks (the template's task list), ordered by [position].
+/// [minPerWeek]/[maxPerWeek] are the advanced weekly limits; `null` means the
+/// task follows the template defaults (min 1, max daysPerWeek).
 class TaskRows extends Table {
   TextColumn get id => text()();
   TextColumn get name => text()();
   IntColumn get position => integer()();
+  IntColumn get minPerWeek => integer().nullable()();
+  IntColumn get maxPerWeek => integer().nullable()();
 
   @override
   Set<Column> get primaryKey => {id};
@@ -56,7 +60,7 @@ class TokenDatabase extends _$TokenDatabase {
   TokenDatabase.forTesting(super.executor);
 
   @override
-  int get schemaVersion => 2;
+  int get schemaVersion => 3;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -64,6 +68,11 @@ class TokenDatabase extends _$TokenDatabase {
     onUpgrade: (m, from, to) async {
       // v1 → v2: reward-claim tracking.
       if (from < 2) await m.createTable(weekClaims);
+      // v2 → v3: per-task advanced weekly limits (both nullable).
+      if (from < 3) {
+        await m.addColumn(taskRows, taskRows.minPerWeek);
+        await m.addColumn(taskRows, taskRows.maxPerWeek);
+      }
     },
   );
 }
