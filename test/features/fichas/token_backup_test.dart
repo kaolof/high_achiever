@@ -81,6 +81,128 @@ void main() {
       expect(out.template.tasks.single.maxPerWeek, isNull);
     });
 
+    test('encode → decode preserves reward tiers, results and watermark', () {
+      const b = TokenBackup(
+        template: TokenTemplate(
+          tasks: [Task(id: 'a', name: 'A'), Task(id: 'b', name: 'B')],
+          daysPerWeek: 5,
+          weekStartDay: DateTime.monday,
+          weeklyGoal: 3,
+          reward: '',
+          rewardTiers: [
+            RewardTier(threshold: 3, reward: 'Bronze'),
+            RewardTier(threshold: 6, reward: 'Silver'),
+          ],
+        ),
+        completions: [],
+        claimedWeeks: [],
+        weekResults: [
+          WeekResultEntry(
+            weekStart: '2026-07-06',
+            tierIndex: 1,
+            reward: 'Silver',
+          ),
+        ],
+        lastSettledWeek: '2026-07-13',
+      );
+      final out = decodeTokenBackup(
+        encodeTokenBackup(b, exportedAt: DateTime(2026, 7, 14)),
+      );
+      expect(out.template.isTiered, isTrue);
+      expect(out.template.rewardTiers.map((t) => t.threshold).toList(), [3, 6]);
+      expect(out.template.rewardTiers.map((t) => t.reward).toList(), [
+        'Bronze',
+        'Silver',
+      ]);
+      expect(out.weekResults.single.weekStart, '2026-07-06');
+      expect(out.weekResults.single.tierIndex, 1);
+      expect(out.weekResults.single.reward, 'Silver');
+      expect(out.lastSettledWeek, '2026-07-13');
+    });
+
+    test('a basic-mode backup omits the new fields and decodes empty', () {
+      const b = TokenBackup(
+        template: TokenTemplate(
+          tasks: [Task(id: 'a', name: 'A')],
+          daysPerWeek: 5,
+          weekStartDay: DateTime.monday,
+          weeklyGoal: 1,
+          reward: 'Solo',
+        ),
+        completions: [],
+        claimedWeeks: [],
+      );
+      final json = encodeTokenBackup(b, exportedAt: DateTime(2026, 7, 11));
+      expect(json.contains('rewardTiers'), isFalse);
+      expect(json.contains('weekResults'), isFalse);
+      expect(json.contains('lastSettledWeek'), isFalse);
+
+      final out = decodeTokenBackup(json);
+      expect(out.template.isTiered, isFalse);
+      expect(out.weekResults, isEmpty);
+      expect(out.lastSettledWeek, isNull);
+    });
+
+    test('reward tiers decode sorted ascending even if listed out of order', () {
+      const json =
+          '{"format":"$kTokenBackupFormat","version":1,'
+          '"template":{"daysPerWeek":5,"weekStartDay":1,"weeklyGoal":3,'
+          '"reward":"","tasks":[{"id":"a","name":"A"}],'
+          '"rewardTiers":[{"threshold":9,"reward":"Gold"},'
+          '{"threshold":3,"reward":"Bronze"}]},'
+          '"completions":[],"claimedWeeks":[]}';
+      final out = decodeTokenBackup(json);
+      expect(out.template.rewardTiers.map((t) => t.threshold).toList(), [3, 9]);
+      expect(out.template.rewardTiers.first.reward, 'Bronze');
+    });
+
+    test('throws on a malformed reward tier', () {
+      const json =
+          '{"format":"$kTokenBackupFormat","version":1,'
+          '"template":{"tasks":[{"id":"a","name":"A"}],'
+          '"rewardTiers":[{"threshold":"lots","reward":"Gold"}]},'
+          '"completions":[],"claimedWeeks":[]}';
+      expect(
+        () => decodeTokenBackup(json),
+        throwsA(isA<TokenBackupFormatException>()),
+      );
+    });
+
+    test('the one-time flag round-trips; repeatable tiers stay compact', () {
+      const b = TokenBackup(
+        template: TokenTemplate(
+          tasks: [Task(id: 'a', name: 'A')],
+          daysPerWeek: 5,
+          weekStartDay: DateTime.monday,
+          weeklyGoal: 2,
+          reward: '',
+          rewardTiers: [
+            RewardTier(threshold: 2, reward: 'Ice cream'), // repeatable
+            RewardTier(threshold: 4, reward: 'Gift', repeatable: false),
+          ],
+        ),
+        completions: [],
+        claimedWeeks: [],
+      );
+      final json = encodeTokenBackup(b, exportedAt: DateTime(2026, 7, 11));
+      // Only the one-time tier writes the flag; the default stays implicit.
+      expect(json.contains('"repeatable": false'), isTrue);
+      final out = decodeTokenBackup(json);
+      expect(out.template.rewardTiers[0].repeatable, isTrue);
+      expect(out.template.rewardTiers[1].repeatable, isFalse);
+    });
+
+    test('a tiered backup without the repeatable key decodes to repeatable', () {
+      const json =
+          '{"format":"$kTokenBackupFormat","version":1,'
+          '"template":{"daysPerWeek":5,"weekStartDay":1,"weeklyGoal":2,'
+          '"reward":"","tasks":[{"id":"a","name":"A"}],'
+          '"rewardTiers":[{"threshold":2,"reward":"X"}]},'
+          '"completions":[],"claimedWeeks":[]}';
+      final out = decodeTokenBackup(json);
+      expect(out.template.rewardTiers.single.repeatable, isTrue);
+    });
+
     test('rejects non-JSON', () {
       expect(
         () => decodeTokenBackup('not json'),
@@ -208,6 +330,42 @@ void main() {
       final logs = await freshRepo.logsForWeek(week);
       expect(logs.fold<int>(0, (s, d) => s + d.tokens), 3);
       expect(await freshRepo.isRewardClaimed(week), isTrue);
+    });
+
+    test('tiers, week results and watermark survive the reinstall', () async {
+      await repo.saveTemplate(
+        const TokenTemplate(
+          tasks: [Task(id: 't1', name: 'Write'), Task(id: 't2', name: 'Run')],
+          daysPerWeek: 5,
+          weekStartDay: DateTime.monday,
+          weeklyGoal: 3,
+          reward: '',
+          rewardTiers: [
+            RewardTier(threshold: 3, reward: 'Bronze'),
+            RewardTier(threshold: 5, reward: 'Silver'),
+          ],
+        ),
+      );
+      final wk = weekStartFor(DateTime(2026, 7, 6), DateTime.monday);
+      await repo.saveWeekResult(wk, 1, 'Silver');
+      await repo.setLastSettledWeek(wk);
+
+      final decoded = decodeTokenBackup(
+        encodeTokenBackup(
+          await repo.exportAll(),
+          exportedAt: DateTime(2026, 7, 14),
+        ),
+      );
+      final freshDb = TokenDatabase.forTesting(NativeDatabase.memory());
+      final freshRepo = DriftTokenRepository(freshDb);
+      addTearDown(() async => freshDb.close());
+      await freshRepo.importAll(decoded);
+
+      final t = await freshRepo.loadTemplate();
+      expect(t.rewardTiers.map((e) => e.reward).toList(), ['Bronze', 'Silver']);
+      expect(await freshRepo.lastSettledWeek(), wk);
+      final reexport = await freshRepo.exportAll();
+      expect(reexport.weekResults.single.reward, 'Silver');
     });
 
     test('importAll replaces existing data (no leftovers)', () async {

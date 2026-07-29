@@ -29,6 +29,11 @@ class _TokenConfigScreenState extends State<TokenConfigScreen> {
   int _weeklyGoal = 18;
   int _idCounter = 0;
 
+  // Advanced reward ladder. When [_tiered] the single reward+goal is replaced by
+  // [_tiers] (ascending thresholds); tier 1's threshold is the weekly minimum.
+  bool _tiered = false;
+  final List<_TierDraft> _tiers = [];
+
   @override
   void initState() {
     super.initState();
@@ -48,7 +53,18 @@ class _TokenConfigScreenState extends State<TokenConfigScreen> {
     _weekStartDay = t.weekStartDay;
     _weeklyGoal = t.weeklyGoal;
     _rewardController.text = t.reward;
+    _tiered = t.isTiered;
+    for (final tier in t.rewardTiers) {
+      _tiers.add(
+        _TierDraft(
+          threshold: tier.threshold,
+          controller: TextEditingController(text: tier.reward),
+          repeatable: tier.repeatable,
+        ),
+      );
+    }
     _clampGoal(); // enforce the "goal ≥ sum of minimums" floor on load
+    _normalizeTiers();
   }
 
   int get _taskCount => _tasks.length;
@@ -69,6 +85,9 @@ class _TokenConfigScreenState extends State<TokenConfigScreen> {
   void dispose() {
     for (final d in _tasks) {
       d.controller.dispose();
+    }
+    for (final t in _tiers) {
+      t.controller.dispose();
     }
     _rewardController.dispose();
     super.dispose();
@@ -122,11 +141,82 @@ class _TokenConfigScreenState extends State<TokenConfigScreen> {
 
   // Keep the goal within [Σ mins, maxTokens]. The floor auto-raises the goal
   // when task minimums grow; the goal can still be set higher than the floor.
+  // Reward tiers share the same floor/ceiling, so re-normalize them here too.
   void _clampGoal() {
     final floor = _sumOfMins;
     final ceil = _maxTokens < floor ? floor : _maxTokens;
     _weeklyGoal = _weeklyGoal.clamp(floor, ceil);
+    _normalizeTiers();
   }
+
+  // ── Reward tiers (advanced) ────────────────────────────────────────────────
+
+  // The highest threshold tier [i] may take, leaving 1 token of room for each
+  // tier above it so the ladder can stay strictly ascending within [_maxTokens].
+  int _tierCeil(int i) => _maxTokens - (_tiers.length - 1 - i);
+
+  // The lowest threshold tier [i] may take: the per-task-min floor for the first
+  // tier (it's the weekly minimum), else one above the previous tier.
+  int _tierFloor(int i) => i == 0 ? _sumOfMins : _tiers[i - 1].threshold + 1;
+
+  // True while another tier still fits below the max-tokens ceiling.
+  bool get _canAddTier => _tiers.isEmpty || _tiers.last.threshold < _maxTokens;
+
+  // Walks the ladder so every threshold is strictly ascending and within bounds.
+  // Runs after any edit that can shift the floor/ceiling (task/day changes,
+  // add/remove, a threshold bump).
+  void _normalizeTiers() {
+    if (_tiers.isEmpty) return;
+    var floor = _sumOfMins;
+    for (var i = 0; i < _tiers.length; i++) {
+      final ceil = _tierCeil(i);
+      var v = _tiers[i].threshold;
+      if (v < floor) v = floor;
+      if (v > ceil) v = ceil;
+      _tiers[i].threshold = v;
+      floor = v + 1;
+    }
+  }
+
+  void _enableTiers() => setState(() {
+    // Seed the ladder from the current single reward + goal so nothing is lost.
+    if (_tiers.isEmpty) {
+      _tiers.add(
+        _TierDraft(
+          threshold: _weeklyGoal,
+          controller: TextEditingController(text: _rewardController.text),
+        ),
+      );
+    }
+    _tiered = true;
+    _normalizeTiers();
+  });
+
+  // Keeps the drafts (so re-enabling restores them); _save ignores them when
+  // basic. Matches the per-task "collapse hides, doesn't discard" behavior.
+  void _disableTiers() => setState(() => _tiered = false);
+
+  void _addTier() => setState(() {
+    final prev = _tiers.isEmpty ? _sumOfMins - 1 : _tiers.last.threshold;
+    _tiers.add(
+      _TierDraft(threshold: prev + 1, controller: TextEditingController()),
+    );
+    _normalizeTiers();
+  });
+
+  void _removeTier(int i) => setState(() {
+    _tiers.removeAt(i).controller.dispose();
+    if (_tiers.isEmpty) _tiered = false; // last tier gone → back to basic
+    _normalizeTiers();
+  });
+
+  void _setTierThreshold(int i, int v) => setState(() {
+    _tiers[i].threshold = v;
+    _normalizeTiers();
+  });
+
+  void _setTierRepeatable(int i, bool v) =>
+      setState(() => _tiers[i].repeatable = v);
 
   void _save() {
     final tasks = [
@@ -148,12 +238,32 @@ class _TokenConfigScreenState extends State<TokenConfigScreen> {
     );
     // Goal floor = Σ task minimums; ceiling = Σ task maximums.
     final sumMins = tasks.fold(0, (s, t) => s + t.effectiveMin);
+    final goalCeil = maxTokens < sumMins ? sumMins : maxTokens;
+
+    final tiered = _tiered && _tiers.isNotEmpty;
+    final rewardTiers = tiered
+        ? [
+            for (var i = 0; i < _tiers.length; i++)
+              RewardTier(
+                threshold: _tiers[i].threshold,
+                reward: _tiers[i].controller.text.trim().isEmpty
+                    ? 'Reward ${i + 1}'
+                    : _tiers[i].controller.text.trim(),
+                repeatable: _tiers[i].repeatable,
+              ),
+          ]
+        : const <RewardTier>[];
+
     final template = TokenTemplate(
       tasks: tasks,
       daysPerWeek: _daysPerWeek,
       weekStartDay: _weekStartDay,
-      weeklyGoal: _weeklyGoal.clamp(sumMins, maxTokens < sumMins ? sumMins : maxTokens),
+      // In tiered mode the lowest tier's threshold IS the weekly minimum.
+      weeklyGoal: tiered
+          ? rewardTiers.first.threshold
+          : _weeklyGoal.clamp(sumMins, goalCeil),
       reward: _rewardController.text.trim(),
+      rewardTiers: rewardTiers,
     );
     context.read<TokenSystemNotifier>().updateTemplate(template);
     FocusScope.of(context).unfocus();
@@ -337,65 +447,93 @@ class _TokenConfigScreenState extends State<TokenConfigScreen> {
           _Card(
             padding: const EdgeInsets.fromLTRB(16, 6, 16, 16),
             child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                _RowStepper(
-                  label: 'Weekly goal',
-                  value: _weeklyGoal,
-                  min: _sumOfMins,
-                  max: _maxTokens == 0 ? _sumOfMins : _maxTokens,
-                  suffix: ' / $_maxTokens',
-                  onChanged: (v) => setState(() => _weeklyGoal = v),
-                ),
-                const SizedBox(height: 8),
-                Align(
-                  alignment: Alignment.centerLeft,
-                  child: Text(
-                    _weeklyGoal <= _sumOfMins
-                        ? 'Minimum $_sumOfMins = sum of every task’s weekly minimum.'
-                        : 'Floor is $_sumOfMins (sum of task minimums); '
-                              'you’re asking for ${_weeklyGoal - _sumOfMins} extra.',
-                    style: const TextStyle(
-                      color: AppColors.textSecondary,
-                      fontSize: 12,
-                      height: 1.3,
-                    ),
+                if (!_tiered) ...[
+                  _RowStepper(
+                    label: 'Weekly goal',
+                    value: _weeklyGoal,
+                    min: _sumOfMins,
+                    max: _maxTokens == 0 ? _sumOfMins : _maxTokens,
+                    suffix: ' / $_maxTokens',
+                    onChanged: (v) => setState(() => _weeklyGoal = v),
                   ),
-                ),
-                const SizedBox(height: 16),
-                TextField(
-                  controller: _rewardController,
-                  cursorColor: AppColors.primary,
-                  style: const TextStyle(
-                    color: AppColors.textPrimary,
-                    fontSize: 15,
-                    fontWeight: FontWeight.w600,
-                  ),
-                  decoration: InputDecoration(
-                    labelText: 'Reward',
-                    labelStyle: const TextStyle(color: AppColors.textSecondary),
-                    filled: true,
-                    fillColor: AppColors.surfaceContainerLow,
-                    prefixIcon: const Icon(
-                      Icons.card_giftcard_rounded,
-                      color: AppColors.textSecondary,
-                      size: 20,
-                    ),
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(14),
-                      borderSide: BorderSide.none,
-                    ),
-                    enabledBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(14),
-                      borderSide: BorderSide.none,
-                    ),
-                    focusedBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(14),
-                      borderSide: const BorderSide(
-                        color: AppColors.primary,
-                        width: 1.5,
+                  const SizedBox(height: 8),
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: Text(
+                      _weeklyGoal <= _sumOfMins
+                          ? 'Minimum $_sumOfMins = sum of every task’s weekly minimum.'
+                          : 'Floor is $_sumOfMins (sum of task minimums); '
+                                'you’re asking for ${_weeklyGoal - _sumOfMins} extra.',
+                      style: const TextStyle(
+                        color: AppColors.textSecondary,
+                        fontSize: 12,
+                        height: 1.3,
                       ),
                     ),
                   ),
+                  const SizedBox(height: 16),
+                  TextField(
+                    controller: _rewardController,
+                    cursorColor: AppColors.primary,
+                    style: const TextStyle(
+                      color: AppColors.textPrimary,
+                      fontSize: 15,
+                      fontWeight: FontWeight.w600,
+                    ),
+                    decoration: _rewardFieldDecoration('Reward'),
+                  ),
+                ] else ...[
+                  for (int i = 0; i < _tiers.length; i++) ...[
+                    _TierEditRow(
+                      index: i,
+                      threshold: _tiers[i].threshold,
+                      min: _tierFloor(i),
+                      max: _tierCeil(i),
+                      controller: _tiers[i].controller,
+                      repeatable: _tiers[i].repeatable,
+                      canDelete: _tiers.length > 1,
+                      onThresholdChanged: (v) => _setTierThreshold(i, v),
+                      onRepeatableChanged: (v) => _setTierRepeatable(i, v),
+                      onDelete: () => _removeTier(i),
+                    ),
+                    if (i < _tiers.length - 1)
+                      const Divider(
+                        height: 22,
+                        thickness: 1,
+                        color: AppColors.surfaceContainerLow,
+                      ),
+                  ],
+                  if (_canAddTier) ...[
+                    const SizedBox(height: 8),
+                    _AddTierRow(onTap: _addTier),
+                  ],
+                  const SizedBox(height: 12),
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: Text(
+                      'Reach a tier’s tokens to earn it — the best tier you hit by '
+                      'week’s end is granted (one reward per week). Tier 1 is the '
+                      'weekly minimum (≥ $_sumOfMins), and every task must still '
+                      'meet its own minimum.',
+                      style: const TextStyle(
+                        color: AppColors.textSecondary,
+                        fontSize: 12,
+                        height: 1.3,
+                      ),
+                    ),
+                  ),
+                ],
+                const SizedBox(height: 14),
+                const Divider(
+                  height: 1,
+                  thickness: 1,
+                  color: AppColors.surfaceContainerLow,
+                ),
+                _RewardModeToggle(
+                  tiered: _tiered,
+                  onTap: _tiered ? _disableTiers : _enableTiers,
                 ),
               ],
             ),
@@ -455,6 +593,45 @@ class _TaskDraft {
     this.advancedOpen = false,
   });
 }
+
+/// A reward-ladder tier being edited: a token [threshold], its reward text and
+/// whether it [repeatable] (default) or a one-time reward.
+class _TierDraft {
+  int threshold;
+  bool repeatable;
+  final TextEditingController controller;
+  _TierDraft({
+    required this.threshold,
+    required this.controller,
+    this.repeatable = true,
+  });
+}
+
+/// Shared decoration for a reward text field (single reward + per-tier).
+InputDecoration _rewardFieldDecoration(String label) => InputDecoration(
+  labelText: label,
+  labelStyle: const TextStyle(color: AppColors.textSecondary),
+  isDense: true,
+  filled: true,
+  fillColor: AppColors.surfaceContainerLow,
+  prefixIcon: const Icon(
+    Icons.card_giftcard_rounded,
+    color: AppColors.textSecondary,
+    size: 20,
+  ),
+  border: OutlineInputBorder(
+    borderRadius: BorderRadius.circular(14),
+    borderSide: BorderSide.none,
+  ),
+  enabledBorder: OutlineInputBorder(
+    borderRadius: BorderRadius.circular(14),
+    borderSide: BorderSide.none,
+  ),
+  focusedBorder: OutlineInputBorder(
+    borderRadius: BorderRadius.circular(14),
+    borderSide: const BorderSide(color: AppColors.primary, width: 1.5),
+  ),
+);
 
 // ── Live "max tokens" banner ─────────────────────────────────────────────────
 class _MaxBanner extends StatelessWidget {
@@ -777,6 +954,199 @@ class _AddTaskRow extends StatelessWidget {
                 fontSize: 15,
                 fontWeight: FontWeight.w700,
               ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// One editable reward tier: a "TIER n" badge, its reward text, and the token
+/// threshold that unlocks it. Tier 1 is tagged as the weekly minimum.
+class _TierEditRow extends StatelessWidget {
+  final int index;
+  final int threshold;
+  final int min;
+  final int max;
+  final TextEditingController controller;
+  final bool repeatable;
+  final bool canDelete;
+  final ValueChanged<int> onThresholdChanged;
+  final ValueChanged<bool> onRepeatableChanged;
+  final VoidCallback onDelete;
+
+  const _TierEditRow({
+    required this.index,
+    required this.threshold,
+    required this.min,
+    required this.max,
+    required this.controller,
+    required this.repeatable,
+    required this.canDelete,
+    required this.onThresholdChanged,
+    required this.onRepeatableChanged,
+    required this.onDelete,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+              decoration: BoxDecoration(
+                color: AppColors.accentLight,
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Text(
+                index == 0 ? 'TIER 1 · MIN' : 'TIER ${index + 1}',
+                style: const TextStyle(
+                  color: AppColors.primary,
+                  fontSize: 11,
+                  fontWeight: FontWeight.w800,
+                  letterSpacing: 0.6,
+                ),
+              ),
+            ),
+            const Spacer(),
+            IconButton(
+              onPressed: canDelete ? onDelete : null,
+              visualDensity: VisualDensity.compact,
+              icon: Icon(
+                Icons.remove_circle_outline_rounded,
+                color: canDelete
+                    ? AppColors.textSecondary
+                    : AppColors.outlineVariant,
+                size: 20,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 4),
+        TextField(
+          controller: controller,
+          cursorColor: AppColors.primary,
+          style: const TextStyle(
+            color: AppColors.textPrimary,
+            fontSize: 15,
+            fontWeight: FontWeight.w600,
+          ),
+          decoration: _rewardFieldDecoration('Reward'),
+        ),
+        const SizedBox(height: 8),
+        _RowStepper(
+          label: 'Unlocks at',
+          value: threshold,
+          min: min,
+          max: max,
+          suffix: ' tokens',
+          onChanged: onThresholdChanged,
+        ),
+        const SizedBox(height: 4),
+        Row(
+          children: [
+            Icon(
+              repeatable
+                  ? Icons.repeat_rounded
+                  : Icons.looks_one_outlined,
+              size: 18,
+              color: AppColors.textSecondary,
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                repeatable
+                    ? 'Repeats every week you reach it'
+                    : 'One-time · earned only once',
+                style: const TextStyle(
+                  color: AppColors.textSecondary,
+                  fontSize: 12.5,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+            Switch.adaptive(
+              value: !repeatable, // the switch turns "one-time" on
+              onChanged: (v) => onRepeatableChanged(!v),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+}
+
+class _AddTierRow extends StatelessWidget {
+  final VoidCallback onTap;
+  const _AddTierRow({required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(12),
+      child: const Padding(
+        padding: EdgeInsets.symmetric(vertical: 10),
+        child: Row(
+          children: [
+            Icon(Icons.add_rounded, color: AppColors.primary, size: 20),
+            SizedBox(width: 10),
+            Text(
+              'Add tier',
+              style: TextStyle(
+                color: AppColors.primary,
+                fontSize: 14,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Switches the reward section between a single reward and the tier ladder.
+class _RewardModeToggle extends StatelessWidget {
+  final bool tiered;
+  final VoidCallback onTap;
+  const _RewardModeToggle({required this.tiered, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: onTap,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 12),
+        child: Row(
+          children: [
+            Icon(
+              tiered ? Icons.layers_rounded : Icons.layers_outlined,
+              color: AppColors.primary,
+              size: 20,
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                tiered
+                    ? 'Reward tiers on · tap to use a single reward'
+                    : 'Advanced · reward tiers',
+                style: const TextStyle(
+                  color: AppColors.primary,
+                  fontSize: 12.5,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: 0.2,
+                ),
+              ),
+            ),
+            Icon(
+              tiered ? Icons.toggle_on_rounded : Icons.toggle_off_outlined,
+              color: tiered ? AppColors.primary : AppColors.outlineVariant,
+              size: 30,
             ),
           ],
         ),

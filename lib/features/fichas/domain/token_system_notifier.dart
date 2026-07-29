@@ -25,6 +25,9 @@ class TokenSystemNotifier extends ChangeNotifier {
   late DateTime _today;
   late DateTime _weekStart;
   bool _rewardClaimed = false;
+  // Reward texts already granted in past weeks. A non-repeatable tier whose text
+  // is in here is "consumed" and won't be granted again.
+  Set<String> _pastGrantedTexts = {};
 
   static const _weekdayNames = [
     'Monday',
@@ -59,6 +62,13 @@ class TokenSystemNotifier extends ChangeNotifier {
       _weekLogs.clear();
       _rewardClaimed = false;
     }
+    // Settling the just-ended week is best-effort: a failure here must never
+    // break startup, so it gets its own guard.
+    try {
+      await _settleIfNeeded();
+    } catch (e, st) {
+      debugPrint('TokenSystemNotifier settle failed: $e\n$st');
+    }
     _loading = false;
     notifyListeners();
   }
@@ -74,6 +84,9 @@ class TokenSystemNotifier extends ChangeNotifier {
       );
     // Claim state is keyed by week, so a new week starts unclaimed for free.
     _rewardClaimed = await _repo.isRewardClaimed(_weekStart);
+    // Consumed one-time rewards: texts granted in every already-recorded week.
+    // (All recorded weeks are earlier than the current one.)
+    _pastGrantedTexts = await _repo.grantedRewardTexts();
   }
 
   // ── Derived state for the UI ──────────────────────────────────────────────
@@ -96,12 +109,16 @@ class TokenSystemNotifier extends ChangeNotifier {
     return null;
   }
 
-  // Distinct days this week each active task was completed. A task can be marked
+  // ── Weekly evaluation (pure over a given week's logs) ──────────────────────
+  // These take the logs explicitly so the current week AND a just-ended week
+  // (at settlement) run through the exact same math.
+
+  // Distinct days each active task was completed in [logs]. A task can be marked
   // at most once per day, so this is exactly its weekly completion count.
-  Map<String, int> get _weekCounts {
+  Map<String, int> _countsFor(Map<String, Set<String>> logs) {
     final active = _activeTaskIds;
     final counts = <String, int>{};
-    for (final ids in _weekLogs.values) {
+    for (final ids in logs.values) {
       for (final id in ids) {
         if (active.contains(id)) counts[id] = (counts[id] ?? 0) + 1;
       }
@@ -109,21 +126,10 @@ class TokenSystemNotifier extends ChangeNotifier {
     return counts;
   }
 
-  /// How many days this week [taskId] was completed (active tasks only).
-  int weekCount(String taskId) =>
-      _activeTaskIds.contains(taskId) ? (_weekCounts[taskId] ?? 0) : 0;
-
-  /// The weekly cap for [taskId] (advanced max, or daysPerWeek by default).
-  int maxFor(String taskId) =>
-      _taskById(taskId)?.effectiveMax(_template.daysPerWeek) ?? 0;
-
-  /// The weekly minimum for [taskId] (advanced min, or 1 by default).
-  int minFor(String taskId) => _taskById(taskId)?.effectiveMin ?? 0;
-
   // Tokens count per task only up to its weekly cap, so a task can never earn
-  // more than its max and weeklyEarned never exceeds weeklyMax.
-  int get weeklyEarned {
-    final counts = _weekCounts;
+  // more than its max and the total never exceeds weeklyMax.
+  int _weeklyEarnedFor(Map<String, Set<String>> logs) {
+    final counts = _countsFor(logs);
     final days = _template.daysPerWeek;
     var sum = 0;
     for (final t in _template.tasks) {
@@ -134,6 +140,50 @@ class TokenSystemNotifier extends ChangeNotifier {
     return sum;
   }
 
+  // Active tasks still short of their weekly minimum in [logs].
+  List<Task> _tasksBelowMinFor(Map<String, Set<String>> logs) {
+    final counts = _countsFor(logs);
+    return [
+      for (final t in _template.tasks)
+        if ((counts[t.id] ?? 0) < t.effectiveMin) t,
+    ];
+  }
+
+  // A tier is available unless it's a one-time reward already granted before.
+  bool _isAvailable(RewardTier t) =>
+      t.repeatable || !_pastGrantedTexts.contains(t.reward);
+
+  // The best tier earned for [logs]: the highest AVAILABLE tier whose threshold
+  // is met, but only once the per-task minimum gate is clear. null when no tier
+  // is earned (or basic mode). Encodes "the minimum is always checked" — a tier
+  // can't be earned below the lowest threshold or with any task under its min.
+  // Consumed one-time tiers are skipped, so a repeat of a spent threshold falls
+  // through to the best still-available lower tier.
+  RewardTier? _earnedTierFor(Map<String, Set<String>> logs) {
+    if (!_template.isTiered) return null;
+    if (_tasksBelowMinFor(logs).isNotEmpty) return null;
+    final earned = _weeklyEarnedFor(logs);
+    RewardTier? best;
+    for (final t in _template.rewardTiers) {
+      if (earned < t.threshold) break; // tiers are sorted ascending
+      if (_isAvailable(t)) best = t; // skip consumed one-time tiers
+    }
+    return best;
+  }
+
+  /// How many days this week [taskId] was completed (active tasks only).
+  int weekCount(String taskId) => _activeTaskIds.contains(taskId)
+      ? (_countsFor(_weekLogs)[taskId] ?? 0)
+      : 0;
+
+  /// The weekly cap for [taskId] (advanced max, or daysPerWeek by default).
+  int maxFor(String taskId) =>
+      _taskById(taskId)?.effectiveMax(_template.daysPerWeek) ?? 0;
+
+  /// The weekly minimum for [taskId] (advanced min, or 1 by default).
+  int minFor(String taskId) => _taskById(taskId)?.effectiveMin ?? 0;
+
+  int get weeklyEarned => _weeklyEarnedFor(_weekLogs);
   int get weeklyMax => _template.maxTokens;
   int get weeklyGoal => _template.weeklyGoal;
   String get reward => _template.reward;
@@ -143,18 +193,46 @@ class TokenSystemNotifier extends ChangeNotifier {
 
   /// Active tasks that haven't reached their weekly minimum yet. Non-empty means
   /// the reward stays locked even if [goalReached] is true.
-  List<Task> get tasksBelowMin {
-    final counts = _weekCounts;
-    return [
-      for (final t in _template.tasks)
-        if ((counts[t.id] ?? 0) < t.effectiveMin) t,
-    ];
+  List<Task> get tasksBelowMin => _tasksBelowMinFor(_weekLogs);
+
+  // ── Reward tiers (advanced) ────────────────────────────────────────────────
+
+  /// True when the template uses a reward ladder instead of a single reward.
+  bool get isTiered => _template.isTiered;
+
+  /// The template's reward ladder (empty in basic mode), sorted ascending.
+  List<RewardTier> get rewardTiers => _template.rewardTiers;
+
+  /// The best tier earned this week so far, or null if none (basic mode, below
+  /// the lowest threshold, a task still under its minimum, or every reached tier
+  /// is a spent one-time reward).
+  RewardTier? get earnedTier => _earnedTierFor(_weekLogs);
+
+  /// Whether [t] is a one-time reward already earned in a past week (so it won't
+  /// be granted again). Repeatable tiers are never consumed.
+  bool isTierConsumed(RewardTier t) =>
+      !t.repeatable && _pastGrantedTexts.contains(t.reward);
+
+  /// The next, not-yet-reached AND still-available tier — powers the "N tokens
+  /// to go" hint. Skips consumed one-time tiers (no point aiming at them). null
+  /// when nothing better is left to earn (or in basic mode).
+  RewardTier? get nextTier {
+    for (final t in _template.rewardTiers) {
+      if (weeklyEarned < t.threshold && _isAvailable(t)) return t;
+    }
+    return null;
   }
 
-  // The reward unlocks only when BOTH the token goal is met AND every task has
-  // reached its weekly minimum (default 1, or the advanced min for customized
-  // tasks).
-  bool get rewardUnlocked => goalReached && tasksBelowMin.isEmpty;
+  /// Tokens still needed to reach [nextTier]. 0 when there is no next tier.
+  int get tokensToNext {
+    final n = nextTier;
+    return n == null ? 0 : (n.threshold - weeklyEarned).clamp(0, n.threshold);
+  }
+
+  // The reward unlocks when the token goal is met AND every task has reached its
+  // weekly minimum. In tiered mode that's exactly "some tier is earned".
+  bool get rewardUnlocked =>
+      isTiered ? earnedTier != null : (goalReached && tasksBelowMin.isEmpty);
   bool get rewardClaimed => _rewardClaimed;
   int get toGo => (weeklyGoal - weeklyEarned).clamp(0, weeklyGoal);
 
@@ -195,6 +273,49 @@ class TokenSystemNotifier extends ChangeNotifier {
     _rewardClaimed = true;
     notifyListeners();
     await _repo.setRewardClaimed(_weekStart);
+  }
+
+  // ── Week-end settlement (tiered mode) ──────────────────────────────────────
+
+  // The reward the just-ended week earned, staged to show once as a "last week"
+  // summary then consumed. null when there's nothing new to surface.
+  ({String reward, int earned})? _pendingResult;
+  ({String reward, int earned})? get pendingResult => _pendingResult;
+
+  /// Clears the pending "last week" result once the UI has shown it.
+  void consumePendingResult() => _pendingResult = null;
+
+  // Grants the best tier the previous week earned (tiered mode only), records it
+  // per week and stages a one-time summary. The [lastSettledWeek] watermark
+  // makes this run exactly once per ended week. The past week is judged with the
+  // CURRENT template — a fair simplification, since templates aren't versioned.
+  Future<void> _settleIfNeeded() async {
+    if (!_template.isTiered) return;
+    final last = await _repo.lastSettledWeek();
+    if (last == null) {
+      // First tiered run: adopt the current week; nothing earlier to settle.
+      await _repo.setLastSettledWeek(_weekStart);
+      return;
+    }
+    if (!last.isBefore(_weekStart)) return; // still within the settled week
+
+    final logs = await _repo.logsForWeek(last);
+    final weekLogs = {
+      for (final l in logs) dayKey(l.date): {...l.completedTaskIds},
+    };
+    final tier = _earnedTierFor(weekLogs);
+    if (tier != null) {
+      await _repo.saveWeekResult(
+        last,
+        _template.rewardTiers.indexOf(tier),
+        tier.reward,
+      );
+      // Consume it now so the current week's live view already reflects a spent
+      // one-time reward.
+      _pastGrantedTexts = {..._pastGrantedTexts, tier.reward};
+      _pendingResult = (reward: tier.reward, earned: _weeklyEarnedFor(weekLogs));
+    }
+    await _repo.setLastSettledWeek(_weekStart);
   }
 
   Future<void> updateTemplate(TokenTemplate template) async {

@@ -111,4 +111,87 @@ void main() {
     await repo.setRewardClaimed(wk);
     expect(await repo.isRewardClaimed(wk), isTrue);
   });
+
+  test('reward tiers round-trip through SQLite in order', () async {
+    await repo.saveTemplate(
+      const TokenTemplate(
+        tasks: [Task(id: 'a', name: 'A'), Task(id: 'b', name: 'B')],
+        daysPerWeek: 5,
+        weekStartDay: DateTime.monday,
+        weeklyGoal: 3,
+        reward: '',
+        rewardTiers: [
+          RewardTier(threshold: 3, reward: 'Bronze'),
+          RewardTier(threshold: 6, reward: 'Silver'),
+          RewardTier(threshold: 9, reward: 'Gold'),
+        ],
+      ),
+    );
+    final t = await repo.loadTemplate();
+    expect(t.isTiered, isTrue);
+    expect(t.rewardTiers.map((e) => e.threshold).toList(), [3, 6, 9]);
+    expect(t.rewardTiers.map((e) => e.reward).toList(), [
+      'Bronze',
+      'Silver',
+      'Gold',
+    ]);
+
+    // Re-saving a basic template clears the ladder wholesale.
+    await repo.saveTemplate(
+      const TokenTemplate(
+        tasks: [Task(id: 'a', name: 'A')],
+        daysPerWeek: 5,
+        weekStartDay: DateTime.monday,
+        weeklyGoal: 1,
+        reward: 'Solo',
+      ),
+    );
+    expect((await repo.loadTemplate()).rewardTiers, isEmpty);
+  });
+
+  test('settlement watermark and week results persist and export', () async {
+    final wk = weekStartFor(DateTime(2026, 7, 6), DateTime.monday);
+    expect(await repo.lastSettledWeek(), isNull);
+
+    await repo.setLastSettledWeek(wk);
+    expect(await repo.lastSettledWeek(), wk);
+
+    await repo.saveWeekResult(wk, 1, 'Silver');
+    // saveWeekResult is an upsert: re-settling the same week overwrites.
+    await repo.saveWeekResult(wk, 2, 'Gold');
+
+    await repo.seedIfEmpty(); // give exportAll a template
+    final backup = await repo.exportAll();
+    expect(backup.lastSettledWeek, dayKey(wk));
+    expect(backup.weekResults.length, 1);
+    expect(backup.weekResults.single.tierIndex, 2);
+    expect(backup.weekResults.single.reward, 'Gold');
+  });
+
+  test('tier repeatable flag round-trips and grantedRewardTexts works', () async {
+    await repo.saveTemplate(
+      const TokenTemplate(
+        tasks: [Task(id: 'a', name: 'A')],
+        daysPerWeek: 5,
+        weekStartDay: DateTime.monday,
+        weeklyGoal: 2,
+        reward: '',
+        rewardTiers: [
+          RewardTier(threshold: 2, reward: 'Ice cream'), // repeatable (default)
+          RewardTier(threshold: 4, reward: 'Big gift', repeatable: false),
+        ],
+      ),
+    );
+    final t = await repo.loadTemplate();
+    expect(t.rewardTiers[0].repeatable, isTrue);
+    expect(t.rewardTiers[1].repeatable, isFalse);
+
+    expect(await repo.grantedRewardTexts(), isEmpty);
+    await repo.saveWeekResult(
+      weekStartFor(DateTime(2026, 7, 6), DateTime.monday),
+      1,
+      'Big gift',
+    );
+    expect(await repo.grantedRewardTexts(), {'Big gift'});
+  });
 }

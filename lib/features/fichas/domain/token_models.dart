@@ -39,15 +39,51 @@ class Task {
   }
 }
 
+/// Advanced settings: one entry of a reward ladder. Reaching [threshold] tokens
+/// in the week earns [reward]. Tiers are always kept sorted by ascending
+/// [threshold]; the lowest tier's threshold is the week's minimum (== the
+/// template's [TokenTemplate.weeklyGoal]).
+///
+/// [repeatable] tiers can be earned every week they're reached (an ice cream, a
+/// lazy weekend). A non-repeatable ("one-time") tier — a specific gift — is
+/// granted at most once: once a past week earned it, it's "consumed" and future
+/// weeks fall through to the best still-available lower tier. Identity for
+/// consumption is the [reward] text, so renaming a reward makes it new again.
+class RewardTier {
+  final int threshold; // tokens needed for this tier
+  final String reward; // free-text description
+  final bool repeatable; // false → one-time (earned at most once, ever)
+
+  const RewardTier({
+    required this.threshold,
+    required this.reward,
+    this.repeatable = true,
+  });
+
+  RewardTier copyWith({int? threshold, String? reward, bool? repeatable}) =>
+      RewardTier(
+        threshold: threshold ?? this.threshold,
+        reward: reward ?? this.reward,
+        repeatable: repeatable ?? this.repeatable,
+      );
+}
+
 /// The user's configuration ("the template"): which tasks, how often, the goal
 /// and the reward. [maxTokens] is the sum of each task's effective weekly max
 /// (which equals tasks × daysPerWeek when no task is customized).
+///
+/// Rewards come in two modes:
+/// - **Basic** (default): [rewardTiers] empty → a single [reward] unlocked at
+///   [weeklyGoal].
+/// - **Tiered** (advanced): [rewardTiers] non-empty → a ladder of rewards, one
+///   per token threshold. The best tier reached is granted at week's end.
 class TokenTemplate {
   final List<Task> tasks;
   final int daysPerWeek;
   final int weekStartDay; // 1 = Mon … 7 = Sun
   final int weeklyGoal; // minimum tokens to unlock the reward
   final String reward;
+  final List<RewardTier> rewardTiers; // empty → basic mode
 
   const TokenTemplate({
     required this.tasks,
@@ -55,10 +91,14 @@ class TokenTemplate {
     required this.weekStartDay,
     required this.weeklyGoal,
     required this.reward,
+    this.rewardTiers = const [],
   });
 
   int get maxTokens =>
       tasks.fold(0, (sum, t) => sum + t.effectiveMax(daysPerWeek));
+
+  /// True when the user configured a reward ladder instead of a single reward.
+  bool get isTiered => rewardTiers.isNotEmpty;
 
   TokenTemplate copyWith({
     List<Task>? tasks,
@@ -66,6 +106,7 @@ class TokenTemplate {
     int? weekStartDay,
     int? weeklyGoal,
     String? reward,
+    List<RewardTier>? rewardTiers,
   }) {
     return TokenTemplate(
       tasks: tasks ?? this.tasks,
@@ -73,6 +114,7 @@ class TokenTemplate {
       weekStartDay: weekStartDay ?? this.weekStartDay,
       weeklyGoal: weeklyGoal ?? this.weeklyGoal,
       reward: reward ?? this.reward,
+      rewardTiers: rewardTiers ?? this.rewardTiers,
     );
   }
 }

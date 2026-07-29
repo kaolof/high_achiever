@@ -22,8 +22,27 @@ abstract class TokenRepository {
   /// Marks the reward for the week starting at [weekStart] as claimed.
   Future<void> setRewardClaimed(DateTime weekStart);
 
-  /// A full snapshot of every stored value: template, complete completion
-  /// history and all claimed weeks. Powers the "export backup" flow.
+  // ── Advanced reward tiers: week-end settlement ─────────────────────────────
+
+  /// The most recent week already settled (tiered mode), or null if never. The
+  /// settlement watermark, so a rolled-over week is granted exactly once.
+  Future<DateTime?> lastSettledWeek();
+
+  /// Advances the settlement watermark to [weekStart].
+  Future<void> setLastSettledWeek(DateTime weekStart);
+
+  /// Records that the week starting at [weekStart] earned the tier at
+  /// [tierIndex] in the ladder, whose text is [reward] (denormalized so the
+  /// record survives later template edits).
+  Future<void> saveWeekResult(DateTime weekStart, int tierIndex, String reward);
+
+  /// Every distinct reward text granted in a past week. A one-time tier whose
+  /// text is in here is "consumed" and must not be granted again.
+  Future<Set<String>> grantedRewardTexts();
+
+  /// A full snapshot of every stored value: template (incl. reward tiers),
+  /// complete completion history, claimed weeks, settled week results and the
+  /// settlement watermark. Powers the "export backup" flow.
   Future<TokenBackup> exportAll();
 
   /// Replaces ALL stored data with [backup]. Destructive and atomic — used to

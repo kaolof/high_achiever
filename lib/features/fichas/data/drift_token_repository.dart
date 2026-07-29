@@ -33,12 +33,24 @@ class DriftTokenRepository implements TokenRepository {
               ),
           ];
 
+    final tierRows = await (_db.select(
+      _db.rewardTierRows,
+    )..orderBy([(t) => OrderingTerm(expression: t.position)])).get();
+
     return TokenTemplate(
       tasks: tasks,
       daysPerWeek: settings.daysPerWeek,
       weekStartDay: settings.weekStartDay,
       weeklyGoal: settings.weeklyGoal,
       reward: settings.reward,
+      rewardTiers: [
+        for (final r in tierRows)
+          RewardTier(
+            threshold: r.threshold,
+            reward: r.reward,
+            repeatable: r.repeatable,
+          ),
+      ],
     );
   }
 
@@ -73,6 +85,21 @@ class DriftTokenRepository implements TokenRepository {
               position: i,
               minPerWeek: Value(t.minPerWeek),
               maxPerWeek: Value(t.maxPerWeek),
+            ),
+          );
+    }
+    // Reward ladder is replaced wholesale too; empty in basic mode.
+    await _db.delete(_db.rewardTierRows).go();
+    for (var i = 0; i < template.rewardTiers.length; i++) {
+      final tier = template.rewardTiers[i];
+      await _db
+          .into(_db.rewardTierRows)
+          .insert(
+            RewardTierRowsCompanion.insert(
+              position: Value(i),
+              threshold: tier.threshold,
+              reward: tier.reward,
+              repeatable: Value(tier.repeatable),
             ),
           );
     }
@@ -143,25 +170,85 @@ class DriftTokenRepository implements TokenRepository {
   }
 
   @override
+  Future<DateTime?> lastSettledWeek() async {
+    final row = await (_db.select(
+      _db.settlementState,
+    )..where((s) => s.id.equals(1))).getSingleOrNull();
+    final key = row?.lastSettledWeek;
+    return key == null ? null : parseDayKey(key);
+  }
+
+  @override
+  Future<void> setLastSettledWeek(DateTime weekStart) async {
+    await _db
+        .into(_db.settlementState)
+        .insertOnConflictUpdate(
+          SettlementStateCompanion.insert(
+            id: const Value(1),
+            lastSettledWeek: Value(dayKey(weekStart)),
+          ),
+        );
+  }
+
+  @override
+  Future<void> saveWeekResult(
+    DateTime weekStart,
+    int tierIndex,
+    String reward,
+  ) async {
+    await _db
+        .into(_db.weekResults)
+        .insertOnConflictUpdate(
+          WeekResultsCompanion.insert(
+            weekStart: dayKey(weekStart),
+            tierIndex: tierIndex,
+            reward: reward,
+          ),
+        );
+  }
+
+  @override
+  Future<Set<String>> grantedRewardTexts() async {
+    final rows = await _db.select(_db.weekResults).get();
+    return {for (final r in rows) r.reward};
+  }
+
+  @override
   Future<TokenBackup> exportAll() async {
     final template = await loadTemplate();
     final comps = await _db.select(_db.completions).get();
     final claims = await _db.select(_db.weekClaims).get();
+    final results = await _db.select(_db.weekResults).get();
+    final settlement = await (_db.select(
+      _db.settlementState,
+    )..where((s) => s.id.equals(1))).getSingleOrNull();
     return TokenBackup(
       template: template,
       completions: [
         for (final c in comps) CompletionEntry(day: c.day, taskId: c.taskId),
       ],
       claimedWeeks: [for (final c in claims) c.weekStart],
+      weekResults: [
+        for (final r in results)
+          WeekResultEntry(
+            weekStart: r.weekStart,
+            tierIndex: r.tierIndex,
+            reward: r.reward,
+          ),
+      ],
+      lastSettledWeek: settlement?.lastSettledWeek,
     );
   }
 
   @override
   Future<void> importAll(TokenBackup backup) async {
     await _db.transaction(() async {
-      // Wipe the append-only logs, then reset the template (settings + tasks).
+      // Wipe the append-only logs + settlement, then reset the template
+      // (settings + tasks + reward tiers, via _writeTemplate).
       await _db.delete(_db.completions).go();
       await _db.delete(_db.weekClaims).go();
+      await _db.delete(_db.weekResults).go();
+      await _db.delete(_db.settlementState).go();
       await _writeTemplate(backup.template);
       for (final c in backup.completions) {
         await _db
@@ -177,6 +264,28 @@ class DriftTokenRepository implements TokenRepository {
             .insert(
               WeekClaimsCompanion.insert(weekStart: w),
               mode: InsertMode.insertOrIgnore,
+            );
+      }
+      for (final r in backup.weekResults) {
+        await _db
+            .into(_db.weekResults)
+            .insert(
+              WeekResultsCompanion.insert(
+                weekStart: r.weekStart,
+                tierIndex: r.tierIndex,
+                reward: r.reward,
+              ),
+              mode: InsertMode.insertOrIgnore,
+            );
+      }
+      if (backup.lastSettledWeek != null) {
+        await _db
+            .into(_db.settlementState)
+            .insertOnConflictUpdate(
+              SettlementStateCompanion.insert(
+                id: const Value(1),
+                lastSettledWeek: Value(backup.lastSettledWeek),
+              ),
             );
       }
     });

@@ -11,6 +11,10 @@ class RewardCelebrationScreen extends StatefulWidget {
   final int earned;
   final int max;
   final VoidCallback? onClaim;
+  // Copy overrides so the same screen doubles as the tiered "last week" summary.
+  final String eyebrow;
+  final String headline;
+  final String claimLabel;
 
   const RewardCelebrationScreen({
     super.key,
@@ -18,6 +22,9 @@ class RewardCelebrationScreen extends StatefulWidget {
     required this.earned,
     required this.max,
     this.onClaim,
+    this.eyebrow = 'GOAL REACHED',
+    this.headline = 'Reward\nunlocked! 🎉',
+    this.claimLabel = 'Claim reward',
   });
 
   static Future<void> show(
@@ -26,6 +33,9 @@ class RewardCelebrationScreen extends StatefulWidget {
     required int earned,
     required int max,
     VoidCallback? onClaim,
+    String eyebrow = 'GOAL REACHED',
+    String headline = 'Reward\nunlocked! 🎉',
+    String claimLabel = 'Claim reward',
   }) {
     return Navigator.of(context).push(
       PageRouteBuilder(
@@ -36,6 +46,9 @@ class RewardCelebrationScreen extends StatefulWidget {
           earned: earned,
           max: max,
           onClaim: onClaim,
+          eyebrow: eyebrow,
+          headline: headline,
+          claimLabel: claimLabel,
         ),
         transitionsBuilder: (_, anim, __, child) =>
             FadeTransition(opacity: anim, child: child),
@@ -94,9 +107,9 @@ class _RewardCelebrationScreenState extends State<RewardCelebrationScreen>
                 opacity: _fade,
                 child: Column(
                   children: [
-                    const Text(
-                      'GOAL REACHED',
-                      style: TextStyle(
+                    Text(
+                      widget.eyebrow,
+                      style: const TextStyle(
                         color: AppColors.primary,
                         fontSize: 12,
                         fontWeight: FontWeight.w700,
@@ -104,10 +117,10 @@ class _RewardCelebrationScreenState extends State<RewardCelebrationScreen>
                       ),
                     ),
                     const SizedBox(height: 12),
-                    const Text(
-                      'Reward\nunlocked! 🎉',
+                    Text(
+                      widget.headline,
                       textAlign: TextAlign.center,
-                      style: TextStyle(
+                      style: const TextStyle(
                         color: AppColors.textPrimary,
                         fontSize: 40,
                         fontWeight: FontWeight.w800,
@@ -133,6 +146,7 @@ class _RewardCelebrationScreenState extends State<RewardCelebrationScreen>
               FadeTransition(
                 opacity: _fade,
                 child: _ClaimButton(
+                  label: widget.claimLabel,
                   onTap: () {
                     widget.onClaim?.call();
                     Navigator.pop(context);
@@ -258,7 +272,8 @@ class _RewardPill extends StatelessWidget {
 
 class _ClaimButton extends StatelessWidget {
   final VoidCallback onTap;
-  const _ClaimButton({required this.onTap});
+  final String label;
+  const _ClaimButton({required this.onTap, required this.label});
 
   @override
   Widget build(BuildContext context) {
@@ -278,10 +293,10 @@ class _ClaimButton extends StatelessWidget {
             ),
           ],
         ),
-        child: const Center(
+        child: Center(
           child: Text(
-            'Claim reward',
-            style: TextStyle(
+            label,
+            style: const TextStyle(
               color: AppColors.surfaceContainerLowest,
               fontSize: 17,
               fontWeight: FontWeight.w700,

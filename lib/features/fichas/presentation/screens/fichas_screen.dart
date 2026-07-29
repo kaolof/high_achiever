@@ -16,8 +16,13 @@ class FichasScreen extends StatelessWidget {
   Future<void> _toggle(BuildContext context, String taskId) async {
     final notifier = context.read<TokenSystemNotifier>();
     final justUnlocked = await notifier.toggleTask(taskId);
-    // Celebrate only on the crossing, and never if already claimed this week.
-    if (justUnlocked && !notifier.rewardClaimed && context.mounted) {
+    // Basic mode celebrates the moment the reward unlocks. Tiered mode has no
+    // mid-week claim — the best tier is granted at week's end — so it never pops
+    // the celebration here.
+    if (justUnlocked &&
+        !notifier.isTiered &&
+        !notifier.rewardClaimed &&
+        context.mounted) {
       _showCelebration(context);
     }
   }
@@ -36,6 +41,24 @@ class FichasScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final n = context.watch<TokenSystemNotifier>();
+    // Tiered mode: surface last week's granted reward once, after this frame.
+    final pending = n.pendingResult;
+    if (pending != null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!context.mounted) return;
+        // Consume first so a rebuild can't re-open the summary.
+        context.read<TokenSystemNotifier>().consumePendingResult();
+        RewardCelebrationScreen.show(
+          context,
+          reward: pending.reward,
+          earned: pending.earned,
+          max: n.weeklyMax,
+          eyebrow: 'LAST WEEK',
+          headline: 'You earned 🎉',
+          claimLabel: 'Nice!',
+        );
+      });
+    }
     return Scaffold(
       backgroundColor: AppColors.surface,
       appBar: AppBar(
@@ -81,16 +104,27 @@ class FichasScreen extends StatelessWidget {
                   belowMinCount: n.tasksBelowMin.length,
                 ),
                 const SizedBox(height: 16),
-                GestureDetector(
-                  onTap: (n.rewardUnlocked || n.rewardClaimed)
-                      ? () => _showCelebration(context)
-                      : null,
-                  child: _RewardCard(
-                    reward: n.reward,
-                    unlocked: n.rewardUnlocked,
-                    claimed: n.rewardClaimed,
+                if (n.isTiered)
+                  _TierProgressCard(
+                    tiers: n.rewardTiers,
+                    earned: n.weeklyEarned,
+                    earnedTier: n.earnedTier,
+                    nextTier: n.nextTier,
+                    tokensToNext: n.tokensToNext,
+                    belowMinCount: n.tasksBelowMin.length,
+                    isConsumed: n.isTierConsumed,
+                  )
+                else
+                  GestureDetector(
+                    onTap: (n.rewardUnlocked || n.rewardClaimed)
+                        ? () => _showCelebration(context)
+                        : null,
+                    child: _RewardCard(
+                      reward: n.reward,
+                      unlocked: n.rewardUnlocked,
+                      claimed: n.rewardClaimed,
+                    ),
                   ),
-                ),
                 const SizedBox(height: 28),
                 _SectionHeader(
                   label: 'TODAY · ${n.todayLabel}',
@@ -329,6 +363,191 @@ class _RewardCard extends StatelessWidget {
       ),
     );
   }
+}
+
+// ── Reward ladder (tiered mode) — a live view of what's earned + what's next ──
+class _TierProgressCard extends StatelessWidget {
+  final List<RewardTier> tiers;
+  final int earned;
+  final RewardTier? earnedTier;
+  final RewardTier? nextTier;
+  final int tokensToNext;
+  final int belowMinCount;
+  final bool Function(RewardTier) isConsumed;
+
+  const _TierProgressCard({
+    required this.tiers,
+    required this.earned,
+    required this.earnedTier,
+    required this.nextTier,
+    required this.tokensToNext,
+    required this.belowMinCount,
+    required this.isConsumed,
+  });
+
+  // The reward is gated: enough tokens for a tier, but a task is under its min.
+  bool get _gatedByMin =>
+      earnedTier == null &&
+      tiers.isNotEmpty &&
+      earned >= tiers.first.threshold &&
+      belowMinCount > 0;
+
+  String get _footer {
+    if (_gatedByMin) {
+      final n = belowMinCount;
+      return n == 1
+          ? 'Finish 1 task’s minimum to unlock 🔒'
+          : 'Finish $n tasks’ minimums to unlock 🔒';
+    }
+    if (nextTier != null) {
+      final unit = tokensToNext == 1 ? 'token' : 'tokens';
+      return '$tokensToNext more $unit → ${nextTier!.reward}';
+    }
+    return 'Top tier reached — granted at week’s end 🎉';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.fromLTRB(18, 16, 18, 16),
+      decoration: BoxDecoration(
+        color: AppColors.surfaceContainerLowest,
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Text('REWARD TIERS', style: _labelStyle),
+              const Spacer(),
+              Text(
+                'best by week’s end',
+                style: TextStyle(
+                  color: AppColors.textSecondary.withValues(alpha: 0.9),
+                  fontSize: 11,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          for (int i = 0; i < tiers.length; i++) _tierRow(tiers[i]),
+          const SizedBox(height: 6),
+          const Divider(
+            height: 1,
+            thickness: 1,
+            color: AppColors.surfaceContainerLow,
+          ),
+          const SizedBox(height: 10),
+          Row(
+            children: [
+              Icon(
+                _gatedByMin
+                    ? Icons.lock_rounded
+                    : (nextTier != null
+                          ? Icons.trending_up_rounded
+                          : Icons.emoji_events_rounded),
+                size: 16,
+                color: AppColors.primary,
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  _footer,
+                  style: const TextStyle(
+                    color: AppColors.textPrimary,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _tierRow(RewardTier t) {
+    final consumed = isConsumed(t);
+    // A consumed one-time tier is never "reached" (it grants nothing now).
+    final reached = !consumed && earnedTier != null && earned >= t.threshold;
+    final isBest = earnedTier != null && t.threshold == earnedTier!.threshold;
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 6),
+      child: Row(
+        children: [
+          Container(
+            width: 30,
+            height: 30,
+            decoration: BoxDecoration(
+              color: reached ? AppColors.primary : AppColors.surfaceContainerLow,
+              shape: BoxShape.circle,
+            ),
+            child: Icon(
+              consumed
+                  ? Icons.redeem_rounded
+                  : (reached
+                        ? (isBest
+                              ? Icons.emoji_events_rounded
+                              : Icons.check_rounded)
+                        : Icons.lock_outline_rounded),
+              size: 16,
+              color: reached
+                  ? AppColors.surfaceContainerLowest
+                  : AppColors.textSecondary,
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Text(
+              t.reward,
+              style: TextStyle(
+                color: reached ? AppColors.textPrimary : AppColors.textSecondary,
+                fontSize: 15,
+                fontWeight: FontWeight.w700,
+                decoration: consumed ? TextDecoration.lineThrough : null,
+                decorationColor: AppColors.textSecondary,
+              ),
+            ),
+          ),
+          const SizedBox(width: 8),
+          if (consumed)
+            _tierTag('ONE-TIME ✓')
+          else if (isBest)
+            _tierTag('NOW')
+          else
+            Text(
+              '${t.threshold}',
+              style: TextStyle(
+                color: reached ? AppColors.primary : AppColors.textSecondary,
+                fontSize: 14,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _tierTag(String label) => Container(
+    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+    decoration: BoxDecoration(
+      color: AppColors.accentLight,
+      borderRadius: BorderRadius.circular(8),
+    ),
+    child: Text(
+      label,
+      style: const TextStyle(
+        color: AppColors.primary,
+        fontSize: 10,
+        fontWeight: FontWeight.w800,
+        letterSpacing: 0.6,
+      ),
+    ),
+  );
 }
 
 // ── Section header with a trailing counter ───────────────────────────────────

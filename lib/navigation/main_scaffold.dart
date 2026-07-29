@@ -15,30 +15,32 @@ class MainScaffold extends StatefulWidget {
 }
 
 class _MainScaffoldState extends State<MainScaffold> {
+  // Index 1 is always the center tab you land on: the Token System when it's
+  // active, otherwise the Timer.
   int _currentIndex = 1;
-
-  static const _baseScreens = [
-    HistoryScreen(),
-    TimerScreen(),
-  ];
 
   @override
   Widget build(BuildContext context) {
     final showTokens = context.watch<AppSettingsNotifier>().showTokensTab;
 
-    // If tokens tab was hidden while it was active, fall back to timer
-    final screens = [
-      ..._baseScreens,
-      if (showTokens) const FichasScreen(),
+    // When the Token System is active it takes the CENTER slot and becomes the
+    // default landing tab; the Timer moves to the right. When it's off, the bar
+    // is just History + Timer, with the Timer as the center/default tab.
+    final tabs = <(Widget, IconData, String)>[
+      (const HistoryScreen(), Icons.history_rounded, 'HISTORY'),
+      if (showTokens)
+        (const FichasScreen(), Icons.military_tech_rounded, 'TOKENS'),
+      (const TimerScreen(), Icons.timer_outlined, 'TIMER'),
     ];
-    final safeIndex = _currentIndex.clamp(0, screens.length - 1);
+    // Clamp so toggling the tab off while it was selected falls back safely.
+    final safeIndex = _currentIndex.clamp(0, tabs.length - 1);
 
     return Scaffold(
       extendBody: true,
-      body: screens[safeIndex],
+      body: tabs[safeIndex].$1,
       bottomNavigationBar: _GlassTabBar(
         currentIndex: safeIndex,
-        showTokens: showTokens,
+        items: [for (final t in tabs) (t.$2, t.$3)],
         onTap: (i) => setState(() => _currentIndex = i),
       ),
     );
@@ -47,23 +49,17 @@ class _MainScaffoldState extends State<MainScaffold> {
 
 class _GlassTabBar extends StatelessWidget {
   final int currentIndex;
-  final bool showTokens;
+  final List<(IconData, String)> items;
   final ValueChanged<int> onTap;
 
   const _GlassTabBar({
     required this.currentIndex,
-    required this.showTokens,
+    required this.items,
     required this.onTap,
   });
 
   @override
   Widget build(BuildContext context) {
-    final items = [
-      (Icons.history_rounded, 'HISTORY'),
-      (Icons.timer_outlined, 'TIMER'),
-      if (showTokens) (Icons.military_tech_rounded, 'TOKENS'),
-    ];
-
     return ClipRect(
       child: BackdropFilter(
         filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
